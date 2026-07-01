@@ -17,6 +17,8 @@ export type Json =
 export type EngagementSource =
   | 'self_reported'
   | 'manual_calculated'
+  | 'auto_fetched_public'
+  | 'auto_fetched_youtube'
   | 'screenshot_verified'
   | 'api_verified';
 
@@ -24,6 +26,8 @@ export type EngagementCalculatedBy = 'creator' | 'admin';
 
 export type VerificationTier =
   | 'self_reported'
+  | 'auto_fetched_public'
+  | 'auto_fetched_youtube'
   | 'screenshot_verified'
   | 'api_verified';
 
@@ -63,6 +67,9 @@ export interface CreatorProfile {
   verification_tier: VerificationTier;
   verification_date: string | null;
   screenshot_url: string | null;
+
+  // Data source tracking
+  data_source_provider: string | null;
 
   // Meta
   created_at: string;

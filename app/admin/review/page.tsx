@@ -25,6 +25,7 @@ interface ReviewItem {
     followers_youtube: number | null;
     followers_facebook: number | null;
     engagement_rate: number | null;
+    screenshot_url: string | null;
   } | null;
 }
 
@@ -71,7 +72,8 @@ export default function AdminReviewPage() {
             followers_instagram,
             followers_youtube,
             followers_facebook,
-            engagement_rate
+            engagement_rate,
+            screenshot_url
           )
         `
         )
@@ -287,6 +289,34 @@ export default function AdminReviewPage() {
                           )}
                         </span>
                       </div>
+                      
+                      {c?.screenshot_url ? (
+                        <div className="mt-4">
+                          <span className="text-xs font-semibold text-[--mc-text-muted] uppercase block mb-1">
+                            Verification Screenshot:
+                          </span>
+                          <a
+                            href={c.screenshot_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block relative rounded-lg border border-[--mc-border] overflow-hidden group hover:border-[--mc-primary] transition-all"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={c.screenshot_url}
+                              alt="Verification screenshot"
+                              className="max-h-48 rounded-lg object-contain"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-medium">
+                              🔍 Open Full Size
+                            </div>
+                          </a>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[--mc-text-muted] mt-3 italic">
+                          No verification screenshot uploaded
+                        </p>
+                      )}
                     </div>
 
                     {/* Review action */}

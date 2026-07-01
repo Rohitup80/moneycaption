@@ -91,8 +91,12 @@ export default function ResultsPage() {
       );
     }
     switch (calcData.verificationTier) {
+      case "auto_fetched_public":
+        return <span className="mc-badge mc-badge-teal">~ Public Data Match</span>;
+      case "auto_fetched_youtube":
+        return <span className="mc-badge mc-badge-youtube">~ YouTube Data Match</span>;
       case "screenshot_verified":
-        return <span className="mc-badge mc-badge-blue">✓ Screenshot Verified</span>;
+        return <span className="mc-badge mc-badge-indigo">✓ Screenshot Verified</span>;
       case "api_verified":
         return <span className="mc-badge mc-badge-green">✓ API Verified</span>;
       default:

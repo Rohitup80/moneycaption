@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { cityOptions, cityTierMapping, nicheOptions } from "@/lib/rate-config";
 import { createClient } from "@supabase/supabase-js";
+import type { FetchResult } from "@/lib/social-fetch";
+import { calculateRates } from "@/lib/rate-engine";
 
 // Untyped client to avoid generics mismatch with current supabase-js version
 const supabase = createClient(
@@ -25,6 +27,10 @@ const formSchema = z.object({
   platforms: z
     .array(z.enum(["instagram", "youtube", "facebook"]))
     .min(1, "Select at least one platform"),
+  // Handle fields for auto-fetch
+  handle_instagram: z.string().optional(),
+  handle_youtube: z.string().optional(),
+  handle_facebook: z.string().optional(),
   followers_instagram: z.number().optional(),
   followers_youtube: z.number().optional(),
   followers_facebook: z.number().optional(),
@@ -34,24 +40,36 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+// Auto-fetch status per platform
+interface FetchStatus {
+  loading: boolean;
+  fetched: boolean;
+  error: string | null;
+  verificationTier: string | null;
+  dataSourceProvider: string | null;
+}
+
 const PLATFORM_OPTIONS = [
   {
     value: "instagram" as const,
     label: "Instagram",
     icon: "📸",
     color: "#E1306C",
+    handlePlaceholder: "@username",
   },
   {
     value: "youtube" as const,
     label: "YouTube",
     icon: "🎬",
     color: "#FF0000",
+    handlePlaceholder: "@channelname",
   },
   {
     value: "facebook" as const,
     label: "Facebook",
     icon: "📘",
     color: "#1877F2",
+    handlePlaceholder: "pagename",
   },
 ];
 
@@ -63,6 +81,10 @@ export default function CalculatorForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [existingProfileId, setExistingProfileId] = useState<string | null>(null);
+  const [fetchStatuses, setFetchStatuses] = useState<Record<string, FetchStatus>>({});
+  // Track highest verification tier across all platforms
+  const [autoVerificationTier, setAutoVerificationTier] = useState<string | null>(null);
+  const [autoDataSource, setAutoDataSource] = useState<string | null>(null);
 
   const {
     register,
@@ -79,6 +101,9 @@ export default function CalculatorForm() {
       phone: "",
       city: "",
       platforms: [],
+      handle_instagram: "",
+      handle_youtube: "",
+      handle_facebook: "",
       followers_instagram: undefined,
       followers_youtube: undefined,
       followers_facebook: undefined,
@@ -88,6 +113,82 @@ export default function CalculatorForm() {
   });
 
   const selectedPlatforms = watch("platforms") || [];
+
+  // ── Auto-fetch handler (B2) ──
+  const handleAutoFetch = useCallback(
+    async (platform: "instagram" | "youtube" | "facebook", handle: string) => {
+      const cleanHandle = handle.replace(/^@/, "").trim();
+      if (!cleanHandle || cleanHandle.length < 2) return;
+
+      // Mark as loading
+      setFetchStatuses((prev) => ({
+        ...prev,
+        [platform]: { loading: true, fetched: false, error: null, verificationTier: null, dataSourceProvider: null },
+      }));
+
+      try {
+        const response = await fetch("/api/fetch-profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform, handle: cleanHandle }),
+        });
+
+        const result: FetchResult = await response.json();
+
+        if (result.success) {
+          const d = result.data;
+          // Auto-fill follower count
+          const followerField = `followers_${platform}` as "followers_instagram" | "followers_youtube" | "followers_facebook";
+          setValue(followerField, d.followers);
+
+          // Auto-fill engagement if calculated
+          if (d.engagementRate && d.engagementRate > 0) {
+            // Only set if no engagement rate is already entered
+            const currentER = watch("engagement_rate");
+            if (!currentER) {
+              setValue("engagement_rate", d.engagementRate);
+            }
+          }
+
+          // Track verification tier
+          setAutoVerificationTier(d.verificationTier);
+          setAutoDataSource(d.dataSourceProvider);
+
+          setFetchStatuses((prev) => ({
+            ...prev,
+            [platform]: {
+              loading: false,
+              fetched: true,
+              error: null,
+              verificationTier: d.verificationTier,
+              dataSourceProvider: d.dataSourceProvider,
+            },
+          }));
+        } else {
+          // Fetch failed — silent fallback to manual input (B6)
+          setFetchStatuses((prev) => ({
+            ...prev,
+            [platform]: {
+              loading: false,
+              fetched: false,
+              error: result.error.code === "PRIVATE_ACCOUNT"
+                ? "Private account — enter numbers manually"
+                : null, // Don't show errors for other failures
+              verificationTier: null,
+              dataSourceProvider: null,
+            },
+          }));
+        }
+      } catch {
+        // Network error or unexpected failure — silent fallback (B6)
+        setFetchStatuses((prev) => ({
+          ...prev,
+          [platform]: { loading: false, fetched: false, error: null, verificationTier: null, dataSourceProvider: null },
+        }));
+      }
+    },
+    [setValue, watch]
+  );
 
   // ── Auto-fill for returning users ──
   useEffect(() => {
@@ -196,11 +297,18 @@ export default function CalculatorForm() {
         data: { session },
       } = await supabase.auth.getSession();
 
+      // Determine verification tier from auto-fetch results
+      const verificationTier = autoVerificationTier || "self_reported";
+      const dataSource = autoDataSource || "manual";
+
       const profileData = {
         name: data.name,
         phone: data.phone || null,
         niche: data.niche,
         city_tier: cityTier,
+        instagram_handle: data.handle_instagram || null,
+        youtube_handle: data.handle_youtube || null,
+        facebook_handle: data.handle_facebook || null,
         followers_instagram: data.platforms.includes("instagram")
           ? data.followers_instagram
           : null,
@@ -211,10 +319,11 @@ export default function CalculatorForm() {
           ? data.followers_facebook
           : null,
         engagement_rate: data.engagement_rate ?? null,
-        engagement_source: engagementSkipped
-          ? ("self_reported" as const)
-          : ("self_reported" as const),
-        verification_tier: "self_reported" as const,
+        engagement_source: autoVerificationTier || (engagementSkipped
+          ? "self_reported"
+          : "self_reported"),
+        verification_tier: verificationTier,
+        data_source_provider: dataSource,
         user_id: session?.user?.id || null,
         updated_at: new Date().toISOString(),
       };
@@ -247,6 +356,39 @@ export default function CalculatorForm() {
         });
       }
 
+      // Calculate rates for history
+      const rateInput = {
+        platforms: data.platforms,
+        followersInstagram: data.followers_instagram,
+        followersYoutube: data.followers_youtube,
+        followersFacebook: data.followers_facebook,
+        niche: data.niche,
+        cityTier,
+        engagementRate: data.engagement_rate,
+      };
+      const computedRates = calculateRates(rateInput);
+
+      // Save to calculations history if logged in
+      if (session?.user?.id) {
+        try {
+          await supabase.from("rate_calculations").insert({
+            user_id: session.user.id,
+            creator_name: data.name,
+            niche: data.niche,
+            city_tier: cityTier,
+            verification_tier: verificationTier,
+            platforms: data.platforms,
+            followers_instagram: data.followers_instagram || null,
+            followers_youtube: data.followers_youtube || null,
+            followers_facebook: data.followers_facebook || null,
+            engagement_rate: data.engagement_rate ?? null,
+            results_json: computedRates,
+          });
+        } catch (historyErr) {
+          console.error("Failed to save history:", historyErr);
+        }
+      }
+
       // Store calculation inputs in sessionStorage for the results page
       const calcInput = {
         profileId,
@@ -259,7 +401,7 @@ export default function CalculatorForm() {
         engagementRate: data.engagement_rate,
         creatorName: data.name,
         engagementSkipped,
-        verificationTier: "self_reported",
+        verificationTier: autoVerificationTier || "self_reported",
         calculatedAt: new Date().toISOString(),
       };
       sessionStorage.setItem("mc_calc_input", JSON.stringify(calcInput));
@@ -282,7 +424,7 @@ export default function CalculatorForm() {
         creatorName: data.name,
         engagementSkipped:
           data.engagement_rate === null || data.engagement_rate === undefined,
-        verificationTier: "self_reported",
+        verificationTier: autoVerificationTier || "self_reported",
         calculatedAt: new Date().toISOString(),
       };
       sessionStorage.setItem("mc_calc_input", JSON.stringify(calcInput));
@@ -473,32 +615,91 @@ export default function CalculatorForm() {
                         </span>
                       </button>
 
-                      {/* Follower input — shown when platform selected */}
+                      {/* Handle + Follower inputs — shown when platform selected */}
                       {isSelected && (
-                        <div className="mt-3 ml-12 animate-fade-in opacity-0">
-                          <label
-                            htmlFor={`followers_${platform.value}`}
-                            className="mc-label"
-                          >
-                            {platform.label} Followers *
-                          </label>
-                          <input
-                            id={`followers_${platform.value}`}
-                            type="number"
-                            min={1000}
-                            placeholder="e.g. 25000 (minimum 1,000)"
-                            className="mc-input"
-                            {...register(
-                              `followers_${platform.value}` as
-                                | "followers_instagram"
-                                | "followers_youtube"
-                                | "followers_facebook",
-                              { valueAsNumber: true }
+                        <div className="mt-3 ml-12 animate-fade-in opacity-0 space-y-4">
+                          {/* Handle input with auto-fetch on blur */}
+                          <div>
+                            <label
+                              htmlFor={`handle_${platform.value}`}
+                              className="mc-label"
+                            >
+                              {platform.label} Handle
+                              <span className="text-[--mc-text-muted]"> (optional — enables auto-fill)</span>
+                            </label>
+                            <div className="relative">
+                              <input
+                                id={`handle_${platform.value}`}
+                                type="text"
+                                placeholder={platform.handlePlaceholder}
+                                className="mc-input"
+                                {...register(
+                                  `handle_${platform.value}` as
+                                    | "handle_instagram"
+                                    | "handle_youtube"
+                                    | "handle_facebook"
+                                )}
+                                onBlur={(e) => {
+                                  const handle = e.target.value.trim();
+                                  if (handle) {
+                                    handleAutoFetch(platform.value, handle);
+                                  }
+                                }}
+                              />
+                              {fetchStatuses[platform.value]?.loading && (
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                  <svg className="animate-spin h-4 w-4 text-[--mc-primary]" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+                            {/* Fetch status feedback */}
+                            {fetchStatuses[platform.value]?.fetched && (
+                              <p className="text-xs text-[--mc-success] mt-1 flex items-center gap-1">
+                                ✓ Auto-filled from public profile
+                                <span className="ml-1 mc-badge mc-badge-teal" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                                  {platform.value === 'youtube' ? '~ YouTube Data' : '~ Public Data'}
+                                </span>
+                              </p>
                             )}
-                          />
-                          <p className="text-xs text-[--mc-text-muted] mt-1">
-                            Minimum 1,000 followers required
-                          </p>
+                            {fetchStatuses[platform.value]?.error && (
+                              <p className="text-xs text-[--mc-warning] mt-1">
+                                {fetchStatuses[platform.value].error}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Follower count — auto-filled or manual */}
+                          <div>
+                            <label
+                              htmlFor={`followers_${platform.value}`}
+                              className="mc-label flex items-center gap-2"
+                            >
+                              {platform.label} Followers *
+                              {fetchStatuses[platform.value]?.fetched && (
+                                <span className="text-xs text-[--mc-success] font-normal">(auto-filled — editable)</span>
+                              )}
+                            </label>
+                            <input
+                              id={`followers_${platform.value}`}
+                              type="number"
+                              min={1000}
+                              placeholder="e.g. 25000 (minimum 1,000)"
+                              className="mc-input"
+                              {...register(
+                                `followers_${platform.value}` as
+                                  | "followers_instagram"
+                                  | "followers_youtube"
+                                  | "followers_facebook",
+                                { valueAsNumber: true }
+                              )}
+                            />
+                            <p className="text-xs text-[--mc-text-muted] mt-1">
+                              Minimum 1,000 followers required
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -528,29 +729,55 @@ export default function CalculatorForm() {
             control={control}
             render={({ field }) => (
               <div className="space-y-3">
-                {nicheOptions.map((niche) => (
-                  <button
-                    key={niche}
-                    type="button"
-                    className={`mc-checkbox-card w-full ${
-                      field.value === niche ? "active" : ""
-                    }`}
-                    onClick={() => field.onChange(niche)}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                        field.value === niche
-                          ? "border-[--mc-primary]"
-                          : "border-[--mc-text-muted]"
-                      }`}
+                {nicheOptions.map((niche) => {
+                  const isSelected = field.value === niche;
+                  return (
+                    <button
+                      key={niche}
+                      type="button"
+                      className="mc-checkbox-card w-full"
+                      style={{
+                        borderColor: isSelected ? "var(--mc-primary)" : undefined,
+                        background: isSelected
+                          ? "rgba(108, 92, 231, 0.15)"
+                          : undefined,
+                        boxShadow: isSelected
+                          ? "0 0 0 1px var(--mc-primary), 0 0 20px rgba(108, 92, 231, 0.1)"
+                          : undefined,
+                      }}
+                      onClick={() => field.onChange(niche)}
                     >
-                      {field.value === niche && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-[--mc-primary]" />
+                      <div
+                        className="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0"
+                        style={{
+                          borderColor: isSelected
+                            ? "var(--mc-primary)"
+                            : "var(--mc-text-muted)",
+                          background: isSelected ? "var(--mc-primary)" : "transparent",
+                        }}
+                      >
+                        {isSelected && (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                            <path d="M20 6L9 17l-5-5" />
+                          </svg>
+                        )}
+                      </div>
+                      <span
+                        className="font-medium"
+                        style={{
+                          color: isSelected ? "var(--mc-text-primary)" : "var(--mc-text-secondary)",
+                        }}
+                      >
+                        {niche}
+                      </span>
+                      {isSelected && (
+                        <span className="ml-auto text-xs font-semibold text-[--mc-primary-light]">
+                          Selected
+                        </span>
                       )}
-                    </div>
-                    <span className="font-medium">{niche}</span>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           />

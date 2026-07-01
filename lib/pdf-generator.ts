@@ -11,10 +11,32 @@ import {
   Text,
   View,
   StyleSheet,
+  Font,
   pdf,
 } from "@react-pdf/renderer";
 import { createElement } from "react";
 import type { RateResult } from "./rate-engine";
+
+// ──────────────────────────────────────────────
+// Font Registration (A3 fix — Noto Sans supports ₹)
+// ──────────────────────────────────────────────
+
+Font.register({
+  family: "Roboto",
+  fonts: [
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf",
+      fontWeight: 400,
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Medium.ttf",
+      fontWeight: 700,
+    },
+  ],
+});
+
+// Disable hyphenation (causes issues with currency symbols)
+Font.registerHyphenationCallback((word) => [word]);
 
 // ──────────────────────────────────────────────
 // Types
@@ -49,7 +71,7 @@ const styles = StyleSheet.create({
   page: {
     backgroundColor: colors.bg,
     padding: 40,
-    fontFamily: "Helvetica",
+    fontFamily: "Roboto",
     color: colors.text,
   },
   header: {
@@ -63,8 +85,9 @@ const styles = StyleSheet.create({
   },
   logoText: {
     fontSize: 22,
-    fontWeight: "bold",
+    fontWeight: 700,
     color: colors.primary,
+    fontFamily: "Roboto",
   },
   badge: {
     fontSize: 8,
@@ -73,29 +96,44 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: colors.bgCard,
     color: colors.textSecondary,
+    fontFamily: "Roboto",
   },
   creatorSection: {
     marginBottom: 24,
   },
   creatorName: {
     fontSize: 24,
-    fontWeight: "bold",
+    fontWeight: 700,
     marginBottom: 6,
     color: colors.text,
+    fontFamily: "Roboto",
   },
   creatorMeta: {
     fontSize: 10,
     color: colors.textSecondary,
+    fontFamily: "Roboto",
   },
-  platformHeader: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: colors.primary,
+  // A4 fix — platform header is now a flex row with gap, not a single Text
+  platformHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginTop: 20,
     marginBottom: 10,
     paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  platformIcon: {
+    fontSize: 14,
+    width: 20,
+    fontFamily: "Roboto",
+  },
+  platformName: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: colors.primary,
+    fontFamily: "Roboto",
   },
   tableHeader: {
     flexDirection: "row",
@@ -107,10 +145,11 @@ const styles = StyleSheet.create({
   },
   tableHeaderText: {
     fontSize: 8,
-    fontWeight: "bold",
+    fontWeight: 700,
     color: colors.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+    fontFamily: "Roboto",
   },
   tableRow: {
     flexDirection: "row",
@@ -125,15 +164,18 @@ const styles = StyleSheet.create({
   cellText: {
     fontSize: 10,
     color: colors.text,
+    fontFamily: "Roboto",
   },
   suggestedQuote: {
     fontSize: 10,
-    fontWeight: "bold",
+    fontWeight: 700,
     color: colors.success,
+    fontFamily: "Roboto",
   },
   customQuote: {
     fontSize: 10,
     color: colors.warning,
+    fontFamily: "Roboto",
   },
   footer: {
     position: "absolute",
@@ -149,6 +191,7 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 8,
     color: colors.textSecondary,
+    fontFamily: "Roboto",
   },
   disclaimer: {
     marginTop: 30,
@@ -160,6 +203,7 @@ const styles = StyleSheet.create({
     fontSize: 7,
     color: colors.textSecondary,
     lineHeight: 1.5,
+    fontFamily: "Roboto",
   },
 });
 
@@ -169,7 +213,8 @@ const styles = StyleSheet.create({
 
 function formatINR(amount: number): string {
   if (amount === 0) return "—";
-  return `₹${amount.toLocaleString("en-IN")}`;
+  // Use INR formatting with the actual ₹ symbol
+  return `\u20B9${amount.toLocaleString("en-IN")}`;
 }
 
 function getCityTierLabel(tier: string): string {
@@ -178,6 +223,10 @@ function getCityTierLabel(tier: string): string {
 
 function getVerificationLabel(tier: string): string {
   switch (tier) {
+    case "auto_fetched_public":
+      return "~ Public Data Match";
+    case "auto_fetched_youtube":
+      return "~ YouTube Data Match";
     case "screenshot_verified":
       return "✓ Screenshot Verified";
     case "api_verified":
@@ -187,10 +236,11 @@ function getVerificationLabel(tier: string): string {
   }
 }
 
-const PLATFORM_LABELS: Record<string, string> = {
-  instagram: "📸 Instagram",
-  youtube: "🎬 YouTube",
-  facebook: "📘 Facebook",
+// A4 fix — use text labels instead of emoji for PDF (emoji renders poorly in PDF fonts)
+const PLATFORM_LABELS: Record<string, { icon: string; name: string }> = {
+  instagram: { icon: "IG", name: "Instagram" },
+  youtube: { icon: "YT", name: "YouTube" },
+  facebook: { icon: "FB", name: "Facebook" },
 };
 
 // ──────────────────────────────────────────────
@@ -235,18 +285,28 @@ function buildRateCardDocument(data: PdfInput) {
         createElement(
           Text,
           { style: styles.creatorMeta },
-          `${data.niche}  •  ${getCityTierLabel(data.cityTier)}  •  Generated ${formattedDate}`
+          `${data.niche}  |  ${getCityTierLabel(data.cityTier)}  |  Generated ${formattedDate}`
         )
       ),
-      // Rate tables per platform
+      // Rate tables per platform (A4 fix — icon and name in separate Text elements)
       ...Object.entries(resultsByPlatform).map(([platform, platformResults]) =>
         createElement(
           View,
           { key: platform },
+          // Platform header row — icon + name in flex row (A4 fix)
           createElement(
-            Text,
-            { style: styles.platformHeader },
-            PLATFORM_LABELS[platform] || platform
+            View,
+            { style: styles.platformHeaderRow },
+            createElement(
+              Text,
+              { style: styles.platformIcon },
+              PLATFORM_LABELS[platform]?.icon || platform.charAt(0).toUpperCase()
+            ),
+            createElement(
+              Text,
+              { style: styles.platformName },
+              PLATFORM_LABELS[platform]?.name || platform
+            )
           ),
           // Table header
           createElement(
@@ -313,7 +373,7 @@ function buildRateCardDocument(data: PdfInput) {
         createElement(
           Text,
           { style: styles.disclaimerText },
-          "These are benchmark estimates, not guaranteed prices. Your actual rate depends on content quality, audience trust, and brand budget. Rates shown are pre-GST. Bundled deals typically get a 15–25% discount."
+          "These are benchmark estimates, not guaranteed prices. Your actual rate depends on content quality, audience trust, and brand budget. Rates shown are pre-GST. Bundled deals typically get a 15-25% discount."
         )
       ),
       // Footer

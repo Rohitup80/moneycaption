@@ -193,3 +193,16 @@ this — not in scope now)
 Caching/refresh logic for previously fetched profiles (for now,
 re-fetch every time the creator revisits the calculator; optimize
 later if API costs become a concern)
+
+
+
+=======================
+
+
+PDF Generation getting failed showing error. when downloading
+Need to setip the screenshot Image for manual verfication
+When loging in it is sending the link not the OTP to login(I want the proper loging setup for my user and the proper user dashboard after loging in. He can check everything in his profile details, update the details, and also save the activities of rate card generation and he can check those details in past as well)
+Add signup button also for new users. they can signup
+
+
+
