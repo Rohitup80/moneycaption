@@ -88,6 +88,9 @@ export default function CalculatorForm() {
   // Track highest verification tier across all platforms
   const [autoVerificationTier, setAutoVerificationTier] = useState<string | null>(null);
   const [autoDataSource, setAutoDataSource] = useState<string | null>(null);
+  const [profilePics, setProfilePics] = useState<Record<string, string | null>>({});
+  const [followingCounts, setFollowingCounts] = useState<Record<string, number | null>>({});
+  const [postsCounts, setPostsCounts] = useState<Record<string, number | null>>({});
 
   const {
     register,
@@ -159,6 +162,17 @@ export default function CalculatorForm() {
           // Track verification tier
           setAutoVerificationTier(d.verificationTier);
           setAutoDataSource(d.dataSourceProvider);
+
+          // Store profile pic, following count, and posts count
+          if (d.profilePicUrl) {
+            setProfilePics((prev) => ({ ...prev, [platform]: d.profilePicUrl }));
+          }
+          if (d.following) {
+            setFollowingCounts((prev) => ({ ...prev, [platform]: d.following }));
+          }
+          if (d.posts) {
+            setPostsCounts((prev) => ({ ...prev, [platform]: d.posts }));
+          }
 
           setFetchStatuses((prev) => ({
             ...prev,
@@ -314,6 +328,9 @@ export default function CalculatorForm() {
       const verificationTier = autoVerificationTier || "self_reported";
       const dataSource = autoDataSource || "manual";
 
+      const primaryPlatform = data.platforms[0];
+      const profilePicUrl = primaryPlatform ? profilePics[primaryPlatform] : null;
+
       const profileData = {
         name: data.name,
         phone: data.phone || null,
@@ -322,19 +339,17 @@ export default function CalculatorForm() {
         instagram_handle: data.handle_instagram || null,
         youtube_handle: data.handle_youtube || null,
         facebook_handle: data.handle_facebook || null,
-        followers_instagram: data.platforms.includes("instagram")
-          ? data.followers_instagram
-          : null,
-        followers_youtube: data.platforms.includes("youtube")
-          ? data.followers_youtube
-          : null,
-        followers_facebook: data.platforms.includes("facebook")
-          ? data.followers_facebook
-          : null,
+        followers_instagram: data.platforms.includes("instagram") ? data.followers_instagram : null,
+        followers_youtube: data.platforms.includes("youtube") ? data.followers_youtube : null,
+        followers_facebook: data.platforms.includes("facebook") ? data.followers_facebook : null,
+        following_instagram: data.platforms.includes("instagram") ? (followingCounts.instagram || null) : null,
+        following_youtube: data.platforms.includes("youtube") ? (followingCounts.youtube || null) : null,
+        following_facebook: data.platforms.includes("facebook") ? (followingCounts.facebook || null) : null,
+        posts_instagram: data.platforms.includes("instagram") ? (postsCounts.instagram || null) : null,
+        posts_youtube: data.platforms.includes("youtube") ? (postsCounts.youtube || null) : null,
+        posts_facebook: data.platforms.includes("facebook") ? (postsCounts.facebook || null) : null,
         engagement_rate: data.engagement_rate ?? null,
-        engagement_source: autoVerificationTier || (engagementSkipped
-          ? "self_reported"
-          : "self_reported"),
+        engagement_source: autoVerificationTier || "self_reported",
         verification_tier: verificationTier,
         data_source_provider: dataSource,
         user_id: session?.user?.id || null,
@@ -342,6 +357,7 @@ export default function CalculatorForm() {
         avg_views_instagram: data.platforms.includes("instagram") ? (data.avgViewsInstagram ?? null) : null,
         avg_views_youtube: data.platforms.includes("youtube") ? (data.avgViewsYoutube ?? null) : null,
         avg_views_facebook: data.platforms.includes("facebook") ? (data.avgViewsFacebook ?? null) : null,
+        profile_pic_url: profilePicUrl || null,
       };
 
       let profileId = existingProfileId;
@@ -401,6 +417,16 @@ export default function CalculatorForm() {
             followers_instagram: data.followers_instagram || null,
             followers_youtube: data.followers_youtube || null,
             followers_facebook: data.followers_facebook || null,
+            instagram_handle: data.handle_instagram || null,
+            youtube_handle: data.handle_youtube || null,
+            facebook_handle: data.handle_facebook || null,
+            profile_pic_url: profilePicUrl || null,
+            following_instagram: data.platforms.includes("instagram") ? (followingCounts.instagram || null) : null,
+            following_youtube: data.platforms.includes("youtube") ? (followingCounts.youtube || null) : null,
+            following_facebook: data.platforms.includes("facebook") ? (followingCounts.facebook || null) : null,
+            posts_instagram: data.platforms.includes("instagram") ? (postsCounts.instagram || null) : null,
+            posts_youtube: data.platforms.includes("youtube") ? (postsCounts.youtube || null) : null,
+            posts_facebook: data.platforms.includes("facebook") ? (postsCounts.facebook || null) : null,
             engagement_rate: data.engagement_rate ?? null,
             avg_views_instagram: data.avgViewsInstagram || null,
             avg_views_youtube: data.avgViewsYoutube || null,
@@ -419,6 +445,15 @@ export default function CalculatorForm() {
         followersInstagram: data.followers_instagram,
         followersYoutube: data.followers_youtube,
         followersFacebook: data.followers_facebook,
+        handleInstagram: data.handle_instagram || null,
+        handleYoutube: data.handle_youtube || null,
+        handleFacebook: data.handle_facebook || null,
+        followingInstagram: data.platforms.includes("instagram") ? (followingCounts.instagram || null) : null,
+        followingYoutube: data.platforms.includes("youtube") ? (followingCounts.youtube || null) : null,
+        followingFacebook: data.platforms.includes("facebook") ? (followingCounts.facebook || null) : null,
+        postsInstagram: data.platforms.includes("instagram") ? (postsCounts.instagram || null) : null,
+        postsYoutube: data.platforms.includes("youtube") ? (postsCounts.youtube || null) : null,
+        postsFacebook: data.platforms.includes("facebook") ? (postsCounts.facebook || null) : null,
         niche: data.niche,
         cityTier,
         engagementRate: data.engagement_rate,
@@ -429,6 +464,7 @@ export default function CalculatorForm() {
         avgViewsInstagram: data.avgViewsInstagram || null,
         avgViewsYoutube: data.avgViewsYoutube || null,
         avgViewsFacebook: data.avgViewsFacebook || null,
+        profilePicUrl: profilePicUrl || null,
       };
       sessionStorage.setItem("mc_calc_input", JSON.stringify(calcInput));
 
@@ -645,7 +681,7 @@ export default function CalculatorForm() {
 
                       {/* Handle + Follower inputs — shown when platform selected */}
                       {isSelected && (
-                        <div className="mt-3 ml-12 animate-fade-in opacity-0 space-y-4">
+                        <div className="mt-3 ml-4 sm:ml-12 animate-fade-in opacity-0 space-y-4">
                           {/* Handle input with auto-fetch on blur */}
                           <div>
                             <label

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import Navbar from "@/components/Navbar";
 
 // Use an untyped client for admin operations to avoid complex generics
 const supabase = createClient(
@@ -26,6 +27,8 @@ interface ReviewItem {
     followers_facebook: number | null;
     engagement_rate: number | null;
     screenshot_url: string | null;
+    screenshot_status?: string | null;
+    quick_review_requested?: boolean;
   } | null;
 }
 
@@ -76,7 +79,9 @@ export default function AdminReviewPage() {
             followers_youtube,
             followers_facebook,
             engagement_rate,
-            screenshot_url
+            screenshot_url,
+            screenshot_status,
+            quick_review_requested
           )
         `
         )
@@ -133,6 +138,77 @@ export default function AdminReviewPage() {
     }
   }
 
+  async function handleApproveScreenshot(queueId: string, creatorId: string) {
+    try {
+      // 1. Update creator profile to screenshot_verified and approved
+      const { error: profileError } = await supabase
+        .from("creator_profiles")
+        .update({
+          verification_tier: "screenshot_verified",
+          screenshot_status: "approved",
+          quick_review_requested: false,
+          engagement_source: "screenshot_verified",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", creatorId);
+
+      if (profileError) throw profileError;
+
+      // 2. Mark queue item as reviewed
+      const { error: queueError } = await supabase
+        .from("admin_review_queue")
+        .update({
+          status: "reviewed",
+          reviewed_by: "admin",
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", queueId);
+
+      if (queueError) throw queueError;
+
+      alert("Screenshot approved successfully!");
+      setQueue((prev) => prev.filter((item) => item.id !== queueId));
+    } catch (err) {
+      console.error("Approve screenshot failed:", err);
+      alert("Failed to approve screenshot.");
+    }
+  }
+
+  async function handleRejectScreenshot(queueId: string, creatorId: string) {
+    if (!confirm("Are you sure you want to reject this screenshot?")) return;
+    try {
+      // 1. Update creator profile to rejected screenshot status
+      const { error: profileError } = await supabase
+        .from("creator_profiles")
+        .update({
+          screenshot_status: "rejected",
+          quick_review_requested: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", creatorId);
+
+      if (profileError) throw profileError;
+
+      // 2. Mark queue item as reviewed to clear it from the admin queue
+      const { error: queueError } = await supabase
+        .from("admin_review_queue")
+        .update({
+          status: "reviewed",
+          reviewed_by: "admin",
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", queueId);
+
+      if (queueError) throw queueError;
+
+      alert("Screenshot rejected.");
+      setQueue((prev) => prev.filter((item) => item.id !== queueId));
+    } catch (err) {
+      console.error("Reject screenshot failed:", err);
+      alert("Failed to reject screenshot.");
+    }
+  }
+
   useEffect(() => {
     if (isAuthed) loadQueue();
   }, [isAuthed]);
@@ -172,6 +248,9 @@ export default function AdminReviewPage() {
   }
 
   // ── Review Panel ──
+  const quickReviews = queue.filter((item) => item.creator_profiles?.quick_review_requested);
+  const quickReviewCount = quickReviews.length;
+
   return (
     <div className="min-h-screen">
       <nav className="glass sticky top-0 z-50">
@@ -197,6 +276,14 @@ export default function AdminReviewPage() {
       </nav>
 
       <main className="max-w-6xl mx-auto px-6 py-10">
+        {quickReviewCount > 0 && (
+          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-between animate-pulse">
+            <span className="text-sm font-semibold flex items-center gap-2">
+              ⚡ Quick Review Requested for {quickReviewCount} creator{quickReviewCount > 1 ? "s" : ""}!
+            </span>
+            <span className="text-xs font-mono uppercase bg-red-500/20 px-2 py-0.5 rounded">Action Required</span>
+          </div>
+        )}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold">Engagement Review Queue</h1>
@@ -246,6 +333,11 @@ export default function AdminReviewPage() {
                         <span className="mc-badge mc-badge-yellow">
                           Pending
                         </span>
+                        {c?.quick_review_requested && (
+                          <span className="mc-badge bg-red-500/20 text-red-400 border border-red-500/20">
+                            ⚡ Quick Review
+                          </span>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
@@ -370,10 +462,27 @@ export default function AdminReviewPage() {
                         onClick={() =>
                           handleReview(item.id, item.creator_id)
                         }
-                        className="mc-btn mc-btn-primary mc-btn-sm mt-2"
+                        className="mc-btn mc-btn-primary mc-btn-sm mt-2 cursor-pointer"
                       >
                         ✓ Submit Review
                       </button>
+
+                      {c?.screenshot_url && (
+                        <div className="flex gap-2 border-t border-[--mc-border] pt-3 mt-1">
+                          <button
+                            onClick={() => handleApproveScreenshot(item.id, item.creator_id)}
+                            className="mc-btn mc-btn-primary mc-btn-sm flex-1 cursor-pointer bg-emerald-600 hover:bg-emerald-700 border-none text-white font-semibold"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => handleRejectScreenshot(item.id, item.creator_id)}
+                            className="mc-btn mc-btn-secondary mc-btn-sm flex-1 cursor-pointer border-red-500 text-red-400 hover:bg-red-500/10"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

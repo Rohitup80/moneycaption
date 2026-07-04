@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { nicheOptions, cityOptions, cityTierMapping } from "@/lib/rate-config";
 import ScreenshotUploadModal from "../results/ScreenshotUploadModal";
+import Navbar from "@/components/Navbar";
 
 // Untyped client to avoid generics mismatch with current supabase-js version
 const supabase = createClient(
@@ -130,6 +131,74 @@ export default function ProfilePage() {
     }
   }
 
+  // Helper to link any anonymous calculations stored in sessionStorage
+  async function linkPastCalculations(userId: string) {
+    const stored = sessionStorage.getItem("mc_calc_input");
+    if (!stored) return;
+    try {
+      const calcData = JSON.parse(stored);
+      const { calculateRates } = await import("@/lib/rate-engine");
+      const computedRates = calculateRates({
+        platforms: {
+          instagram: calcData.platforms.includes("instagram") ? calcData.followersInstagram : undefined,
+          youtube: calcData.platforms.includes("youtube") ? calcData.followersYoutube : undefined,
+          facebook: calcData.platforms.includes("facebook") ? calcData.followersFacebook : undefined,
+        },
+        niche: calcData.niche,
+        cityTier: calcData.cityTier,
+        engagementRate: calcData.engagementRate,
+        avgViewsInstagram: calcData.avgViewsInstagram ?? null,
+        avgViewsYoutube: calcData.avgViewsYoutube ?? null,
+        avgViewsFacebook: calcData.avgViewsFacebook ?? null,
+      });
+
+      await supabase.from("rate_calculations").insert({
+        user_id: userId,
+        creator_name: calcData.creatorName,
+        niche: calcData.niche,
+        city_tier: calcData.cityTier,
+        verification_tier: calcData.verificationTier,
+        platforms: calcData.platforms,
+        followers_instagram: calcData.followersInstagram || null,
+        followers_youtube: calcData.followersYoutube || null,
+        followers_facebook: calcData.followersFacebook || null,
+        engagement_rate: calcData.engagementRate ?? null,
+        avg_views_instagram: calcData.avgViewsInstagram || null,
+        avg_views_youtube: calcData.avgViewsYoutube || null,
+        avg_views_facebook: calcData.avgViewsFacebook || null,
+        results_json: computedRates,
+      });
+
+      // Clear after linking
+      sessionStorage.removeItem("mc_calc_input");
+    } catch (linkErr) {
+      console.error("Failed to link past calculation:", linkErr);
+    }
+  }
+
+  // Request quick review from admin for uploaded screenshot
+  async function handleRequestQuickReview() {
+    if (!profile) return;
+    setLoading(true);
+    setError("");
+    setSuccessMsg("");
+    try {
+      const { error } = await supabase
+        .from("creator_profiles")
+        .update({ quick_review_requested: true })
+        .eq("id", profile.id);
+
+      if (error) throw error;
+      setSuccessMsg("Quick review requested! Admin has been notified.");
+      if (userId) loadProfileAndHistory(userId);
+    } catch (err) {
+      console.error("Failed to request quick review:", err);
+      setError("Failed to request quick review. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // ── Password Sign Up ──
   async function handleSignUp() {
     if (!email || !password || !fullName || !niche || !city) {
@@ -174,47 +243,12 @@ export default function ProfilePage() {
       }
 
       // 3. Link any calculations stored in sessionStorage
-      const stored = sessionStorage.getItem("mc_calc_input");
-      if (stored) {
-        try {
-          const calcData = JSON.parse(stored);
-          const { calculateRates } = await import("@/lib/rate-engine");
-          const computedRates = calculateRates({
-            platforms: {
-              instagram: calcData.platforms.includes("instagram") ? calcData.followersInstagram : undefined,
-              youtube: calcData.platforms.includes("youtube") ? calcData.followersYoutube : undefined,
-              facebook: calcData.platforms.includes("facebook") ? calcData.followersFacebook : undefined,
-            },
-            niche: calcData.niche,
-            cityTier: calcData.cityTier,
-            engagementRate: calcData.engagementRate,
-            avgViewsInstagram: calcData.avgViewsInstagram ?? null,
-            avgViewsYoutube: calcData.avgViewsYoutube ?? null,
-            avgViewsFacebook: calcData.avgViewsFacebook ?? null,
-          });
+      await linkPastCalculations(authData.user.id);
 
-          await supabase.from("rate_calculations").insert({
-            user_id: authData.user.id,
-            creator_name: calcData.creatorName,
-            niche: calcData.niche,
-            city_tier: calcData.cityTier,
-            verification_tier: calcData.verificationTier,
-            platforms: calcData.platforms,
-            followers_instagram: calcData.followersInstagram || null,
-            followers_youtube: calcData.followersYoutube || null,
-            followers_facebook: calcData.followersFacebook || null,
-            engagement_rate: calcData.engagementRate ?? null,
-            results_json: computedRates,
-          });
-        } catch (linkErr) {
-          console.error("Failed to link past calculation:", linkErr);
-        }
-      }
-
-      setSuccessMsg("Registration successful! Logging you in...");
+      setSuccessMsg("Registration successful! Please check your email to verify your account before logging in.");
       setTimeout(() => {
-        setView("dashboard");
-      }, 1000);
+        setView("login");
+      }, 4000);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Registration failed.";
       setError(message);
@@ -242,8 +276,16 @@ export default function ProfilePage() {
 
       if (authError) throw authError;
 
+      // Enforce email verification check
+      if (data.user && !data.user.email_confirmed_at) {
+        await supabase.auth.signOut();
+        throw new Error("Please verify your email address before logging in. Check your inbox for the verification link.");
+      }
+
       setSuccessMsg("Logged in successfully!");
       if (data.user) {
+        // Link any session storage calculations to their newly logged in profile
+        await linkPastCalculations(data.user.id);
         setUserId(data.user.id);
         setView("dashboard");
         loadProfileAndHistory(data.user.id);
@@ -381,34 +423,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Nav */}
-      <nav className="glass sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2 group">
-            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-[#6C5CE7] to-[#00D2D3] flex items-center justify-center text-white font-bold text-xs group-hover:scale-110 transition-transform">
-              M
-            </div>
-            <span className="text-base font-bold bg-gradient-to-r from-[#6C5CE7] to-[#00D2D3] bg-clip-text text-transparent">
-              MoneyCaption
-            </span>
-          </a>
-          <div className="flex items-center gap-4">
-            <a
-              href="/calculate"
-              className="text-sm font-medium text-[--mc-text-secondary] hover:text-white transition-colors"
-            >
-              Calculator
-            </a>
-            {userId && (
-              <button
-                onClick={handleLogout}
-                className="text-sm font-medium text-[--mc-text-secondary] hover:text-[--mc-error] transition-colors"
-              >
-                Logout
-              </button>
-            )}
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       <main className="max-w-6xl mx-auto px-6 py-12">
         {/* ── AUTH VIEWS ── */}
@@ -708,12 +723,41 @@ export default function ProfilePage() {
                       label="Engagement Rate"
                       value={profile?.engagement_rate ? `${profile.engagement_rate}%` : "Pending Review"}
                     />
+                    {profile?.screenshot_url && (
+                      <div className="border-t border-[--mc-border] pt-3 mt-2 space-y-2 text-left">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-[--mc-text-secondary]">Screenshot Review:</span>
+                          {profile.screenshot_status === "approved" ? (
+                            <span className="text-[--mc-success] font-bold">✓ Approved</span>
+                          ) : profile.screenshot_status === "rejected" ? (
+                            <span className="text-[--mc-error] font-bold">❌ Rejected</span>
+                          ) : (
+                            <span className="text-[--mc-warning] font-bold">⏳ Pending Review</span>
+                          )}
+                        </div>
+                        {profile.screenshot_status === "pending" && !profile.quick_review_requested && (
+                          <button
+                            onClick={handleRequestQuickReview}
+                            disabled={loading}
+                            className="mc-btn mc-btn-secondary w-full text-[10px] py-1 bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20 cursor-pointer"
+                          >
+                            ⚡ Request Quick Review
+                          </button>
+                        )}
+                        {profile.screenshot_status === "pending" && profile.quick_review_requested && (
+                          <p className="text-[10px] text-center text-red-400 font-semibold animate-pulse">
+                            ⚡ Quick review requested!
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     <div className="pt-2">
                       <button
                         onClick={() => setShowUploadModal(true)}
-                        className="mc-btn mc-btn-secondary w-full text-xs py-2"
+                        className="mc-btn mc-btn-secondary w-full text-xs py-2 cursor-pointer"
                       >
-                        📷 Upload Verification Screenshot
+                        {profile?.screenshot_url ? "📷 Upload New Screenshot" : "📷 Upload Verification Screenshot"}
                       </button>
                     </div>
                   </div>

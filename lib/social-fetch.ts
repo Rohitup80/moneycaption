@@ -517,3 +517,152 @@ export async function fetchSocialProfile(
       };
   }
 }
+
+// ──────────────────────────────────────────────
+// Fetch Recent Posts with Metrics
+// ──────────────────────────────────────────────
+
+export interface FetchedPost {
+  url: string;
+  title: string;
+  likes: number;
+  comments: number;
+  views: number | null;
+  date: string;
+  imageUrl: string | null;
+}
+
+export async function fetchRecentPosts(
+  platform: "instagram" | "youtube" | "facebook",
+  handle: string
+): Promise<FetchedPost[]> {
+  const cleanHandle = handle.replace(/^@/, "").trim();
+
+  if (platform === "instagram") {
+    if (!SCRAPE_API_KEY) return [];
+    try {
+      const res = await fetchWithTimeout(
+        `${SCRAPE_BASE_URL}/instagram/profile?handle=${encodeURIComponent(cleanHandle)}`,
+        {
+          method: "GET",
+          headers: {
+            "x-api-key": SCRAPE_API_KEY,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (!res.ok) return [];
+      const data: any = await res.json();
+      const recentPosts = data.recent_posts || data.edge_owner_to_timeline_media?.edges || [];
+      return recentPosts.slice(0, 5).map((post: any) => ({
+        url: post.shortcode ? `https://instagram.com/p/${post.shortcode}` : `https://instagram.com/${cleanHandle}`,
+        title: post.caption || post.title || "Instagram Post",
+        likes: post.like_count || post.edge_liked_by?.count || post.likes || 0,
+        comments: post.comment_count || post.edge_media_to_comment?.count || post.comments || 0,
+        views: post.view_count || post.views || null,
+        date: post.taken_at ? new Date(post.taken_at * 1000).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN"),
+        imageUrl: post.display_url || post.thumbnail_src || null,
+      }));
+    } catch (err) {
+      console.error("IG posts fetch error:", err);
+      return [];
+    }
+  }
+
+  if (platform === "youtube") {
+    if (!YOUTUBE_API_KEY) return [];
+    try {
+      let channelId: string | null = null;
+      const handleRes = await fetchWithTimeout(
+        `https://www.googleapis.com/youtube/v3/channels?part=id&forHandle=${encodeURIComponent(cleanHandle)}&key=${YOUTUBE_API_KEY}`,
+        { method: "GET" }
+      );
+      if (handleRes.ok) {
+        const handleData: any = await handleRes.json();
+        if (handleData.items && handleData.items.length > 0) {
+          channelId = handleData.items[0].id;
+        }
+      }
+      if (!channelId && (cleanHandle.startsWith("UC") || cleanHandle.startsWith("UU"))) {
+        channelId = cleanHandle;
+      }
+      if (!channelId) {
+        const searchRes = await fetchWithTimeout(
+          `https://www.googleapis.com/youtube/v3/search?part=id&q=${encodeURIComponent(cleanHandle)}&type=channel&maxResults=1&key=${YOUTUBE_API_KEY}`,
+          { method: "GET" }
+        );
+        if (searchRes.ok) {
+          const searchData: any = await searchRes.json();
+          if (searchData.items && searchData.items.length > 0) {
+            channelId = searchData.items[0].id?.channelId;
+          }
+        }
+      }
+      if (!channelId) return [];
+
+      const videosRes = await fetchWithTimeout(
+        `https://www.googleapis.com/youtube/v3/search?part=id,snippet&channelId=${channelId}&order=date&type=video&maxResults=5&key=${YOUTUBE_API_KEY}`,
+        { method: "GET" }
+      );
+      if (!videosRes.ok) return [];
+      const videosData: any = await videosRes.json();
+      if (!videosData.items || videosData.items.length === 0) return [];
+
+      const videoIds = videosData.items.map((item: any) => item.id.videoId).filter(Boolean);
+      if (videoIds.length === 0) return [];
+
+      const statsRes = await fetchWithTimeout(
+        `https://www.googleapis.com/youtube/v3/videos?part=id,snippet,statistics&id=${videoIds.join(",")}&key=${YOUTUBE_API_KEY}`,
+        { method: "GET" }
+      );
+      if (!statsRes.ok) return [];
+      const statsData: any = await statsRes.json();
+
+      return (statsData.items || []).map((video: any) => ({
+        url: `https://youtube.com/watch?v=${video.id}`,
+        title: video.snippet.title,
+        likes: parseInt(video.statistics.likeCount || "0", 10),
+        comments: parseInt(video.statistics.commentCount || "0", 10),
+        views: parseInt(video.statistics.viewCount || "0", 10),
+        date: new Date(video.snippet.publishedAt).toLocaleDateString("en-IN"),
+        imageUrl: video.snippet.thumbnails?.default?.url || null,
+      }));
+    } catch (err) {
+      console.error("YT posts fetch error:", err);
+      return [];
+    }
+  }
+
+  if (platform === "facebook") {
+    if (!SCRAPE_API_KEY) return [];
+    try {
+      const res = await fetchWithTimeout(
+        `${SCRAPE_BASE_URL}/facebook/profile?handle=${encodeURIComponent(cleanHandle)}`,
+        {
+          method: "GET",
+          headers: {
+            "x-api-key": SCRAPE_API_KEY,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (!res.ok) return [];
+      const data: any = await res.json();
+      const recentPosts = data.recent_posts || [];
+      return recentPosts.slice(0, 5).map((post: any) => ({
+        url: post.url || `https://facebook.com/${cleanHandle}`,
+        title: post.text || post.message || "Facebook Post",
+        likes: post.reactions_count || post.likes || 0,
+        comments: post.comments_count || post.comments || 0,
+        views: post.view_count || null,
+        date: post.time ? new Date(post.time).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN"),
+        imageUrl: post.image || post.thumbnail || null,
+      }));
+    } catch (err) {
+      console.error("FB posts fetch error:", err);
+      return [];
+    }
+  }
+
+  return [];
+}

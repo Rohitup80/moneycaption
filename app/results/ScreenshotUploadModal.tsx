@@ -97,11 +97,16 @@ export default function ScreenshotUploadModal({
           .from("creator_profiles")
           .update({
             screenshot_url: urlData.publicUrl,
-            verification_tier: "screenshot_verified",
-            verification_date: new Date().toISOString(),
+            screenshot_status: "pending",
             updated_at: new Date().toISOString(),
           })
           .eq("id", profileId);
+
+        // Queue for admin review
+        await supabase.from("admin_review_queue").insert({
+          creator_id: profileId,
+          status: "pending",
+        });
       }
 
       setSuccess(true);
@@ -151,11 +156,10 @@ export default function ScreenshotUploadModal({
 
         {success ? (
           <div className="text-center py-8">
-            <div className="text-5xl mb-4">✅</div>
+            <div className="text-5xl mb-4">⏳</div>
             <h3 className="text-xl font-bold mb-2">Screenshot Uploaded!</h3>
             <p className="text-sm text-[--mc-text-secondary]">
-              Your verification badge has been updated to{" "}
-              <span className="mc-badge mc-badge-blue">✓ Screenshot Verified</span>
+              Your screenshot is pending review. Once approved, your verification badge will activate!
             </p>
           </div>
         ) : (

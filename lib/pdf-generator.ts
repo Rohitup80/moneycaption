@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Font,
   pdf,
+  Image,
 } from "@react-pdf/renderer";
 import { createElement } from "react";
 
@@ -43,6 +44,20 @@ export interface PdfInput {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   results: any[]; // RateCardResult[]
   calculatedAt: string;
+  instagramHandle?: string | null;
+  youtubeHandle?: string | null;
+  facebookHandle?: string | null;
+  followersInstagram?: number;
+  followersYoutube?: number;
+  followersFacebook?: number;
+  followingInstagram?: number | null;
+  followingYoutube?: number | null;
+  followingFacebook?: number | null;
+  postsInstagram?: number | null;
+  postsYoutube?: number | null;
+  postsFacebook?: number | null;
+  profilePicUrl?: string | null;
+  recentPosts?: any[]; // FetchedPost[]
 }
 
 // ──────────────────────────────────────────────
@@ -92,6 +107,19 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: "NotoSans",
   },
+  avatarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
   creatorSection: {
     marginBottom: 24,
   },
@@ -107,7 +135,30 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontFamily: "NotoSans",
   },
-  // Platform header row — icon + name in flex row (Step 6)
+  statsRow: {
+    flexDirection: "row",
+    gap: 20,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  statBox: {
+    flexDirection: "column",
+  },
+  statLabel: {
+    fontSize: 7,
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    fontFamily: "NotoSans",
+  },
+  statValue: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: colors.text,
+    fontFamily: "NotoSans",
+    marginTop: 2,
+  },
   platformHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -174,6 +225,63 @@ const styles = StyleSheet.create({
     fontFamily: "NotoSans",
     marginTop: 1,
   },
+  metricsSection: {
+    marginTop: 24,
+    paddingTop: 12,
+  },
+  metricsSectionTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: colors.accent,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingBottom: 4,
+    fontFamily: "NotoSans",
+  },
+  postRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.bgCard,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  postImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  postInfo: {
+    flex: 1,
+    flexDirection: "column",
+  },
+  postTitle: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: colors.text,
+    fontFamily: "NotoSans",
+  },
+  postDate: {
+    fontSize: 7,
+    color: colors.textSecondary,
+    fontFamily: "NotoSans",
+    marginTop: 1,
+  },
+  postMetrics: {
+    flexDirection: "row",
+    gap: 16,
+    justifyContent: "flex-end",
+  },
+  postMetricItem: {
+    fontSize: 8,
+    fontWeight: "bold",
+    fontFamily: "NotoSans",
+  },
   footer: {
     position: "absolute",
     bottom: 30,
@@ -191,7 +299,7 @@ const styles = StyleSheet.create({
     fontFamily: "NotoSans",
   },
   disclaimer: {
-    marginTop: 30,
+    marginTop: 24,
     padding: 12,
     backgroundColor: colors.bgCard,
     borderRadius: 4,
@@ -244,6 +352,14 @@ function buildRateCardDocument(data: PdfInput) {
     day: "numeric",
   });
 
+  const primaryHandle = data.instagramHandle
+    ? `@${data.instagramHandle.replace(/^@/, "")}`
+    : data.youtubeHandle
+    ? `@${data.youtubeHandle.replace(/^@/, "")}`
+    : data.facebookHandle
+    ? `@${data.facebookHandle.replace(/^@/, "")}`
+    : "";
+
   return createElement(
     Document,
     null,
@@ -254,30 +370,127 @@ function buildRateCardDocument(data: PdfInput) {
       createElement(
         View,
         { style: styles.header },
-        createElement(Text, { style: styles.logoText }, "MoneyCaption"),
         createElement(
-          Text,
-          { style: styles.badge },
-          getVerificationLabel(data.verificationTier)
+          View,
+          null,
+          createElement(Text, { style: styles.logoText }, "MoneyCaption"),
+          createElement(
+            Text,
+            { style: { ...styles.badge, marginTop: 4 } },
+            getVerificationLabel(data.verificationTier)
+          )
+        ),
+        (data.profilePicUrl || primaryHandle) && createElement(
+          View,
+          { style: styles.avatarContainer },
+          createElement(
+            View,
+            { style: { alignItems: "flex-end" } },
+            createElement(
+              Text,
+              { style: { fontSize: 10, fontWeight: "bold", color: colors.text } },
+              data.creatorName
+            ),
+            primaryHandle ? createElement(
+              Text,
+              { style: { fontSize: 8, color: colors.accent, marginTop: 1 } },
+              primaryHandle
+            ) : null
+          ),
+          data.profilePicUrl ? createElement(
+            Image,
+            {
+              src: typeof window !== "undefined"
+                ? `${window.location.origin}/api/proxy-image?url=${encodeURIComponent(data.profilePicUrl)}`
+                : data.profilePicUrl,
+              style: styles.avatar
+            }
+          ) : null
         )
       ),
-      // Creator section
+      // Creator info & stats section
       createElement(
         View,
         { style: styles.creatorSection },
-        createElement(Text, { style: styles.creatorName }, data.creatorName),
         createElement(
           Text,
           { style: styles.creatorMeta },
-          `${data.niche}  |  ${getCityTierLabel(data.cityTier)}  |  Generated ${formattedDate}`
-        )
+          `${data.niche.toUpperCase().replace(/_/g, " ")}  |  ${getCityTierLabel(data.cityTier)}  |  Generated ${formattedDate}`
+        ),
+        (data.instagramHandle || data.youtubeHandle || data.facebookHandle) && createElement(
+          View,
+          { style: { flexDirection: "row", gap: 12, marginTop: 6 } },
+          data.instagramHandle ? createElement(
+            Text,
+            { style: { fontSize: 8, color: colors.textSecondary } },
+            `IG: @${data.instagramHandle.replace(/^@/, "")}`
+          ) : null,
+          data.youtubeHandle ? createElement(
+            Text,
+            { style: { fontSize: 8, color: colors.textSecondary } },
+            `YT: @${data.youtubeHandle.replace(/^@/, "")}`
+          ) : null,
+          data.facebookHandle ? createElement(
+            Text,
+            { style: { fontSize: 8, color: colors.textSecondary } },
+            `FB: @${data.facebookHandle.replace(/^@/, "")}`
+          ) : null
+        ),
+        // Followers / Following / Posts counts box
+        (data.followingInstagram || data.followingYoutube || data.followingFacebook ||
+         data.postsInstagram || data.postsYoutube || data.postsFacebook ||
+         data.followersInstagram || data.followersYoutube || data.followersFacebook) ? createElement(
+          View,
+          { style: styles.statsRow },
+          createElement(
+            View,
+            { style: styles.statBox },
+            createElement(Text, { style: styles.statLabel }, "Audience (Followers)"),
+            createElement(
+              Text,
+              { style: styles.statValue },
+              [
+                data.followersInstagram ? `${data.followersInstagram.toLocaleString("en-IN")} (IG)` : "",
+                data.followersYoutube ? `${data.followersYoutube.toLocaleString("en-IN")} (YT)` : "",
+                data.followersFacebook ? `${data.followersFacebook.toLocaleString("en-IN")} (FB)` : "",
+              ].filter(Boolean).join("  |  ")
+            )
+          ),
+          (data.followingInstagram || data.followingYoutube || data.followingFacebook) ? createElement(
+            View,
+            { style: styles.statBox },
+            createElement(Text, { style: styles.statLabel }, "Following"),
+            createElement(
+              Text,
+              { style: styles.statValue },
+              [
+                data.followingInstagram ? `${data.followingInstagram.toLocaleString("en-IN")} (IG)` : "",
+                data.followingYoutube ? `${data.followingYoutube.toLocaleString("en-IN")} (YT)` : "",
+                data.followingFacebook ? `${data.followingFacebook.toLocaleString("en-IN")} (FB)` : "",
+              ].filter(Boolean).join("  |  ")
+            )
+          ) : null,
+          (data.postsInstagram || data.postsYoutube || data.postsFacebook) ? createElement(
+            View,
+            { style: styles.statBox },
+            createElement(Text, { style: styles.statLabel }, "Content Count (Posts)"),
+            createElement(
+              Text,
+              { style: styles.statValue },
+              [
+                data.postsInstagram ? `${data.postsInstagram.toLocaleString("en-IN")} (IG)` : "",
+                data.postsYoutube ? `${data.postsYoutube.toLocaleString("en-IN")} (YT)` : "",
+                data.postsFacebook ? `${data.postsFacebook.toLocaleString("en-IN")} (FB)` : "",
+              ].filter(Boolean).join("  |  ")
+            )
+          ) : null
+        ) : null
       ),
-      // Rate tables per platform (Step 9 selected price logic)
+      // Rate tables per platform
       ...data.results.map((p) =>
         createElement(
           View,
           { key: p.platform },
-          // Platform header row — icon + name in flex row
           createElement(
             View,
             { style: styles.platformHeaderRow },
@@ -292,7 +505,6 @@ function buildRateCardDocument(data: PdfInput) {
               PLATFORM_LABELS[p.platform]?.name || p.platform
             )
           ),
-          // Table header
           createElement(
             View,
             { style: styles.tableHeader },
@@ -307,7 +519,6 @@ function buildRateCardDocument(data: PdfInput) {
               "Suggested Rate"
             )
           ),
-          // Table rows
           ...p.deliverables.map((d: any) =>
             createElement(
               View,
@@ -339,6 +550,52 @@ function buildRateCardDocument(data: PdfInput) {
           )
         )
       ),
+      // Optional Recent Post Metrics Section
+      data.recentPosts && data.recentPosts.length > 0 ? createElement(
+        View,
+        { style: styles.metricsSection, wrap: false },
+        createElement(Text, { style: styles.metricsSectionTitle }, "Recent Content Performance (Last 5 Posts)"),
+        ...data.recentPosts.map((post: any, idx: number) =>
+          createElement(
+            View,
+            { key: idx, style: styles.postRow },
+            post.imageUrl ? createElement(
+              Image,
+              {
+                src: typeof window !== "undefined"
+                  ? `${window.location.origin}/api/proxy-image?url=${encodeURIComponent(post.imageUrl)}`
+                  : post.imageUrl,
+                style: styles.postImage
+              }
+            ) : null,
+            createElement(
+              View,
+              { style: styles.postInfo },
+              createElement(Text, { style: styles.postTitle }, post.title),
+              createElement(Text, { style: styles.postDate }, post.date)
+            ),
+            createElement(
+              View,
+              { style: styles.postMetrics },
+              createElement(
+                Text,
+                { style: { ...styles.postMetricItem, color: colors.primary } },
+                `Likes: ${post.likes.toLocaleString("en-IN")}`
+              ),
+              createElement(
+                Text,
+                { style: { ...styles.postMetricItem, color: colors.accent } },
+                `Comments: ${post.comments.toLocaleString("en-IN")}`
+              ),
+              post.views !== null ? createElement(
+                Text,
+                { style: { ...styles.postMetricItem, color: colors.warning } },
+                `Views: ${post.views.toLocaleString("en-IN")}`
+              ) : null
+            )
+          )
+        )
+      ) : null,
       // Disclaimer
       createElement(
         View,

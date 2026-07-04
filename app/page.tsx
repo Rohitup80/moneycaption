@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import Navbar from "@/components/Navbar";
 
 const PLATFORMS = [
   { name: "Instagram", icon: "📸", color: "#E1306C" },
@@ -90,35 +91,7 @@ export default function LandingPage() {
       </div>
 
       {/* ─── Navigation ─── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6C5CE7] to-[#00D2D3] flex items-center justify-center text-white font-bold text-sm group-hover:scale-110 transition-transform">
-              M
-            </div>
-            <span className="text-lg font-bold bg-gradient-to-r from-[#6C5CE7] to-[#00D2D3] bg-clip-text text-transparent">
-              MoneyCaption
-            </span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/profile"
-              className="text-sm font-medium text-[--mc-text-secondary] hover:text-white transition-colors"
-            >
-              Login
-            </Link>
-            <Link
-              href="/profile?view=signup"
-              className="text-sm font-medium text-[--mc-text-secondary] hover:text-white transition-colors"
-            >
-              Sign Up
-            </Link>
-            <Link href="/calculate" className="mc-btn mc-btn-primary mc-btn-sm">
-              Calculate My Rate
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* ─── Hero Section ─── */}
       <section className="relative pt-40 pb-24 px-6">

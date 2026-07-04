@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import CalculatorForm from "./CalculatorForm";
+import Navbar from "@/components/Navbar";
 
 export const metadata: Metadata = {
   title: "Calculate Your Rate",
@@ -23,24 +24,7 @@ export default function CalculatePage() {
       </div>
 
       {/* Nav */}
-      <nav className="glass sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2 group">
-            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-[#6C5CE7] to-[#00D2D3] flex items-center justify-center text-white font-bold text-xs group-hover:scale-110 transition-transform">
-              M
-            </div>
-            <span className="text-base font-bold bg-gradient-to-r from-[#6C5CE7] to-[#00D2D3] bg-clip-text text-transparent">
-              MoneyCaption
-            </span>
-          </a>
-          <a
-            href="/profile"
-            className="text-sm font-medium text-[--mc-text-secondary] hover:text-white transition-colors"
-          >
-            Login
-          </a>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Main */}
       <main className="max-w-3xl mx-auto px-6 py-12">
