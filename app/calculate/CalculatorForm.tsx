@@ -36,6 +36,9 @@ const formSchema = z.object({
   followers_facebook: z.number().optional(),
   niche: z.string().min(1, "Please select your niche"),
   engagement_rate: z.number().optional().nullable(),
+  avgViewsInstagram: z.number().optional().nullable(),
+  avgViewsYoutube: z.number().optional().nullable(),
+  avgViewsFacebook: z.number().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -109,6 +112,9 @@ export default function CalculatorForm() {
       followers_facebook: undefined,
       niche: "",
       engagement_rate: null,
+      avgViewsInstagram: null,
+      avgViewsYoutube: null,
+      avgViewsFacebook: null,
     },
   });
 
@@ -214,6 +220,13 @@ export default function CalculatorForm() {
           setValue("niche", profile.niche || "");
           if (profile.engagement_rate)
             setValue("engagement_rate", Number(profile.engagement_rate));
+
+          if (profile.avg_views_instagram)
+            setValue("avgViewsInstagram", Number(profile.avg_views_instagram));
+          if (profile.avg_views_youtube)
+            setValue("avgViewsYoutube", Number(profile.avg_views_youtube));
+          if (profile.avg_views_facebook)
+            setValue("avgViewsFacebook", Number(profile.avg_views_facebook));
 
           // Find matching city
           if (profile.city_tier) {
@@ -326,6 +339,9 @@ export default function CalculatorForm() {
         data_source_provider: dataSource,
         user_id: session?.user?.id || null,
         updated_at: new Date().toISOString(),
+        avg_views_instagram: data.platforms.includes("instagram") ? (data.avgViewsInstagram ?? null) : null,
+        avg_views_youtube: data.platforms.includes("youtube") ? (data.avgViewsYoutube ?? null) : null,
+        avg_views_facebook: data.platforms.includes("facebook") ? (data.avgViewsFacebook ?? null) : null,
       };
 
       let profileId = existingProfileId;
@@ -358,13 +374,17 @@ export default function CalculatorForm() {
 
       // Calculate rates for history
       const rateInput = {
-        platforms: data.platforms,
-        followersInstagram: data.followers_instagram,
-        followersYoutube: data.followers_youtube,
-        followersFacebook: data.followers_facebook,
+        platforms: {
+          instagram: data.platforms.includes("instagram") ? data.followers_instagram : undefined,
+          youtube: data.platforms.includes("youtube") ? data.followers_youtube : undefined,
+          facebook: data.platforms.includes("facebook") ? data.followers_facebook : undefined,
+        },
         niche: data.niche,
         cityTier,
         engagementRate: data.engagement_rate,
+        avgViewsInstagram: data.avgViewsInstagram ?? null,
+        avgViewsYoutube: data.avgViewsYoutube ?? null,
+        avgViewsFacebook: data.avgViewsFacebook ?? null,
       };
       const computedRates = calculateRates(rateInput);
 
@@ -382,6 +402,9 @@ export default function CalculatorForm() {
             followers_youtube: data.followers_youtube || null,
             followers_facebook: data.followers_facebook || null,
             engagement_rate: data.engagement_rate ?? null,
+            avg_views_instagram: data.avgViewsInstagram || null,
+            avg_views_youtube: data.avgViewsYoutube || null,
+            avg_views_facebook: data.avgViewsFacebook || null,
             results_json: computedRates,
           });
         } catch (historyErr) {
@@ -403,14 +426,16 @@ export default function CalculatorForm() {
         engagementSkipped,
         verificationTier: autoVerificationTier || "self_reported",
         calculatedAt: new Date().toISOString(),
+        avgViewsInstagram: data.avgViewsInstagram || null,
+        avgViewsYoutube: data.avgViewsYoutube || null,
+        avgViewsFacebook: data.avgViewsFacebook || null,
       };
       sessionStorage.setItem("mc_calc_input", JSON.stringify(calcInput));
 
       router.push("/results");
     } catch (error) {
       console.error("Submission error:", error);
-      // If Supabase fails (e.g., tables not yet created), still show results
-      // by saving to sessionStorage with local data
+      // If Supabase fails, still show results with local data
       const cityTier = cityTierMapping[data.city] || "tier_3";
       const calcInput = {
         profileId: null,
@@ -426,6 +451,9 @@ export default function CalculatorForm() {
           data.engagement_rate === null || data.engagement_rate === undefined,
         verificationTier: autoVerificationTier || "self_reported",
         calculatedAt: new Date().toISOString(),
+        avgViewsInstagram: data.avgViewsInstagram || null,
+        avgViewsYoutube: data.avgViewsYoutube || null,
+        avgViewsFacebook: data.avgViewsFacebook || null,
       };
       sessionStorage.setItem("mc_calc_input", JSON.stringify(calcInput));
       router.push("/results");
@@ -821,6 +849,62 @@ export default function CalculatorForm() {
                   v === "" || v === undefined ? null : parseFloat(v),
               })}
             />
+
+            {/* Show if Instagram was selected */}
+            {selectedPlatforms.includes("instagram") && (
+              <div className="mt-4">
+                <label className="mc-label">Avg Reel Views — Optional</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 1200"
+                  className="mc-input"
+                  {...register("avgViewsInstagram", {
+                    valueAsNumber: true,
+                    setValueAs: (v: string) =>
+                      v === "" || v === undefined ? null : parseInt(v, 10),
+                  })}
+                />
+                <p className="text-xs text-[--mc-text-muted] mt-1">
+                  Open your last 10 Reels, average the view counts.
+                  This makes your rate card significantly more accurate.
+                </p>
+              </div>
+            )}
+
+            {/* Show if YouTube was selected */}
+            {selectedPlatforms.includes("youtube") && (
+              <div className="mt-4">
+                <label className="mc-label">Avg YouTube Video Views — Optional</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 5000"
+                  className="mc-input"
+                  {...register("avgViewsYoutube", {
+                    valueAsNumber: true,
+                    setValueAs: (v: string) =>
+                      v === "" || v === undefined ? null : parseInt(v, 10),
+                  })}
+                />
+              </div>
+            )}
+
+            {/* Show if Facebook was selected */}
+            {selectedPlatforms.includes("facebook") && (
+              <div className="mt-4">
+                <label className="mc-label">Avg Facebook Post Reach — Optional</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 800"
+                  className="mc-input"
+                  {...register("avgViewsFacebook", {
+                    valueAsNumber: true,
+                    setValueAs: (v: string) =>
+                      v === "" || v === undefined ? null : parseInt(v, 10),
+                  })}
+                />
+              </div>
+            )}
+
             <div className="mt-4 glass p-4 rounded-lg">
               <p className="text-sm text-[--mc-text-secondary] leading-relaxed">
                 💡 <strong>How to calculate:</strong> Take your last 10–20

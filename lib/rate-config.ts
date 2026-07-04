@@ -1,201 +1,109 @@
 /**
- * Rate Benchmark Configuration — Section 6 of the build spec.
- *
- * Stored as a config object (not hardcoded inline) so rates can be
- * updated every 6–9 months without touching core calculation logic.
- *
- * All monetary values are in INR (₹).
+ * MoneyCaption — Rate Configuration v2
+ * CPM + Production Floor model
+ * Replaces the old follower-tier lookup table
  */
 
-// ──────────────────────────────────────────────
-// Follower Tier Definitions
-// ──────────────────────────────────────────────
+// CPM rates (₹ per 1,000 views/reached audience) — Indian market 2026
+export const CPM_RATES = {
+  contentFee:      600,
+  marketStandard:  1000,
+  brandInvestment: 1800,
+} as const
 
-export interface FollowerTier {
-  name: string;
-  minFollowers: number;
-  maxFollowers: number | null; // null = unlimited (1M+)
-  baseMin: number;
-  baseMax: number | null; // null = "Custom quote"
-  baseMedian: number;
+// What % of followers actually see a Reel — conservative, real 2026 data
+export const REACH_RATES: Record<string, number> = {
+  below_1pct:   0.08,
+  er_1_to_2:    0.12,
+  er_2_to_4:    0.20,
+  er_4_to_6:    0.28,
+  er_6_to_8:    0.35,
+  er_above_8:   0.42,
+  not_provided: 0.20,
 }
 
-export const followerTiers: FollowerTier[] = [
-  {
-    name: 'Nano',
-    minFollowers: 1_000,
-    maxFollowers: 10_000,
-    baseMin: 1_500,
-    baseMax: 10_000,
-    baseMedian: 4_000,
-  },
-  {
-    name: 'Micro',
-    minFollowers: 10_000,
-    maxFollowers: 50_000,
-    baseMin: 5_000,
-    baseMax: 35_000,
-    baseMedian: 15_000,
-  },
-  {
-    name: 'Mid',
-    minFollowers: 50_000,
-    maxFollowers: 100_000,
-    baseMin: 15_000,
-    baseMax: 70_000,
-    baseMedian: 35_000,
-  },
-  {
-    name: 'Mid-Large',
-    minFollowers: 100_000,
-    maxFollowers: 500_000,
-    baseMin: 30_000,
-    baseMax: 250_000,
-    baseMedian: 80_000,
-  },
-  {
-    name: 'Macro',
-    minFollowers: 500_000,
-    maxFollowers: 1_000_000,
-    baseMin: 100_000,
-    baseMax: 500_000,
-    baseMedian: 200_000,
-  },
-  {
-    name: 'Mega',
-    minFollowers: 1_000_000,
-    maxFollowers: null,
-    baseMin: 300_000,
-    baseMax: null, // "Custom quote"
-    baseMedian: 300_000,
-  },
-];
-
-// ──────────────────────────────────────────────
-// Niche Multipliers
-// ──────────────────────────────────────────────
-
-export const nicheMultipliers: Record<string, number> = {
-  'Finance / Tech / B2B SaaS': 1.3,
-  'Health / Wellness / Education': 1.15,
-  'Beauty / Fashion': 1.1,
-  Fitness: 1.0,
-  'Food / Lifestyle / Comedy / General': 0.85,
-};
-
-// Niche options for the form dropdown
-export const nicheOptions = Object.keys(nicheMultipliers);
-
-// ──────────────────────────────────────────────
-// Engagement Rate Adjustments
-// ──────────────────────────────────────────────
-
-export interface EngagementBracket {
-  label: string;
-  minRate: number;
-  maxRate: number | null; // null = no upper bound
-  adjustment: number; // e.g. -0.15 = -15%
+// Minimum price regardless of reach — covers scripting, shooting, editing
+export const PRODUCTION_FLOORS: Record<string, number> = {
+  story_single:    300,
+  story_set:       500,
+  static_post:     700,
+  carousel:        900,
+  reel:            1000,
+  facebook_post:   500,
+  facebook_video:  800,
+  yt_short:        1500,
+  yt_integration:  3000,
+  yt_dedicated:    5000,
 }
 
-export const engagementBrackets: EngagementBracket[] = [
-  { label: 'Below 2%', minRate: 0, maxRate: 2, adjustment: -0.15 },
-  { label: '2–4%', minRate: 2, maxRate: 4, adjustment: 0 },
-  { label: '4–7%', minRate: 4, maxRate: 7, adjustment: 0.2 },
-  { label: '7%+', minRate: 7, maxRate: null, adjustment: 0.35 },
-];
+// Deliverables per platform
+// viewMultiplier = how this format's reach compares to a Reel (baseline 1.0)
+export const DELIVERABLES = {
+  instagram: [
+    { id: 'story_single',  label: 'Story (single)',       floorKey: 'story_single',  viewMultiplier: 0.25, platform: 'instagram' },
+    { id: 'story_set',     label: 'Story set (3–5)',      floorKey: 'story_set',     viewMultiplier: 0.40, platform: 'instagram' },
+    { id: 'static_post',   label: 'Static post',          floorKey: 'static_post',   viewMultiplier: 0.65, platform: 'instagram' },
+    { id: 'carousel',      label: 'Carousel',             floorKey: 'carousel',      viewMultiplier: 0.80, platform: 'instagram' },
+    { id: 'reel',          label: 'Reel',                 floorKey: 'reel',          viewMultiplier: 1.00, platform: 'instagram' },
+  ],
+  youtube: [
+    { id: 'yt_short',      label: 'YouTube Short / Integration', floorKey: 'yt_short',     viewMultiplier: 1.80, platform: 'youtube' },
+    { id: 'yt_dedicated',  label: 'Dedicated YouTube video',     floorKey: 'yt_dedicated', viewMultiplier: 2.60, platform: 'youtube' },
+  ],
+  facebook: [
+    { id: 'facebook_post',  label: 'Single post',   floorKey: 'facebook_post',  viewMultiplier: 0.55, platform: 'facebook' },
+    { id: 'facebook_video', label: 'Video post',    floorKey: 'facebook_video', viewMultiplier: 0.75, platform: 'facebook' },
+  ],
+} as const
 
-// ──────────────────────────────────────────────
-// Deliverable Type Multipliers
-// ──────────────────────────────────────────────
-
-export interface Deliverable {
-  key: string;
-  label: string;
-  platform: 'instagram' | 'youtube' | 'facebook';
-  multiplierMin: number;
-  multiplierMax: number;
+// Niche multipliers — finance/tech commands 30-50% premium over lifestyle
+export const NICHE_MULTIPLIERS: Record<string, { multiplier: number; label: string }> = {
+  finance_tech_b2b:        { multiplier: 1.40, label: 'Finance / Tech / B2B' },
+  health_wellness_edu:     { multiplier: 1.20, label: 'Health / Wellness / Education' },
+  beauty_fashion:          { multiplier: 1.15, label: 'Beauty / Fashion' },
+  automotive_realty:       { multiplier: 1.20, label: 'Automotive / Real Estate' },
+  fitness:                 { multiplier: 1.00, label: 'Fitness' },
+  food_travel:             { multiplier: 0.90, label: 'Food / Travel' },
+  lifestyle_comedy_general:{ multiplier: 0.80, label: 'Lifestyle / Comedy / General' },
 }
 
-export const deliverables: Deliverable[] = [
-  // Instagram
-  {
-    key: 'ig_story_single',
-    label: 'Story (single)',
-    platform: 'instagram',
-    multiplierMin: 0.3,
-    multiplierMax: 0.3,
-  },
-  {
-    key: 'ig_story_set',
-    label: 'Story set (3–5)',
-    platform: 'instagram',
-    multiplierMin: 0.5,
-    multiplierMax: 0.5,
-  },
-  {
-    key: 'ig_carousel',
-    label: 'Carousel / Static post',
-    platform: 'instagram',
-    multiplierMin: 0.9,
-    multiplierMax: 0.9,
-  },
-  {
-    key: 'ig_reel',
-    label: 'Reel',
-    platform: 'instagram',
-    multiplierMin: 1.0,
-    multiplierMax: 1.0,
-  },
+// City tier multipliers
+export const CITY_MULTIPLIERS: Record<string, number> = {
+  tier_1: 1.10,
+  tier_2: 1.00,
+  tier_3: 0.90,
+}
 
-  // Facebook
-  {
-    key: 'fb_post',
-    label: 'Single post',
-    platform: 'facebook',
-    multiplierMin: 0.7,
-    multiplierMax: 0.7,
-  },
-  {
-    key: 'fb_video',
-    label: 'Video post',
-    platform: 'facebook',
-    multiplierMin: 0.9,
-    multiplierMax: 0.9,
-  },
+export const TIER_1_CITIES = [
+  'Mumbai','Delhi','Bangalore','Bengaluru','Hyderabad',
+  'Chennai','Pune','Kolkata','Ahmedabad','Noida','Gurugram',
+]
 
-  // YouTube
-  {
-    key: 'yt_integration',
-    label: 'Shorts / Integration',
-    platform: 'youtube',
-    multiplierMin: 2.0,
-    multiplierMax: 2.5,
+// Labels shown on results page price cards
+export const PRICE_TIER_LABELS = {
+  contentFee: {
+    label: 'Content Fee',
+    sublabel: 'Minimum — covers your production effort',
   },
-  {
-    key: 'yt_dedicated',
-    label: 'Dedicated video',
-    platform: 'youtube',
-    multiplierMin: 2.5,
-    multiplierMax: 3.0,
+  marketStandard: {
+    label: 'Market Standard',
+    sublabel: 'What most brands actively budget',
   },
-];
+  brandInvestment: {
+    label: 'Brand Investment',
+    sublabel: 'For serious brands with real budgets',
+  },
+} as const
 
-// ──────────────────────────────────────────────
-// City Tier Adjustments
-// ──────────────────────────────────────────────
+export const DISCLAIMER =
+  'Benchmark estimates based on Indian market data 2026. Not guaranteed prices. ' +
+  'Content Fee = minimum floor. Market Standard = what similar creators charge. ' +
+  'Brand Investment = for brands with serious budgets. ' +
+  'All rates pre-GST. Add 18% GST if your annual brand income exceeds ₹20 lakh. ' +
+  'Bundle deals typically get 15–25% discount. Generated by moneycaption.com'
 
-export const cityTierAdjustments: Record<string, number> = {
-  tier_1: 0.1,
-  tier_2: 0,
-  tier_3: -0.05,
-};
-
-// ──────────────────────────────────────────────
 // City → Tier Mapping (Major Indian Cities)
-// ──────────────────────────────────────────────
-
 export const cityTierMapping: Record<string, 'tier_1' | 'tier_2' | 'tier_3'> = {
-  // Tier 1 — Metro cities
   Mumbai: 'tier_1',
   Delhi: 'tier_1',
   'New Delhi': 'tier_1',
@@ -207,7 +115,6 @@ export const cityTierMapping: Record<string, 'tier_1' | 'tier_2' | 'tier_3'> = {
   Pune: 'tier_1',
   Ahmedabad: 'tier_1',
 
-  // Tier 2 — Major non-metro cities
   Jaipur: 'tier_2',
   Lucknow: 'tier_2',
   Chandigarh: 'tier_2',
@@ -243,14 +150,15 @@ export const cityTierMapping: Record<string, 'tier_1' | 'tier_2' | 'tier_3'> = {
   Vijayawada: 'tier_2',
   Raipur: 'tier_2',
 
-  // Tier 3 — Smaller cities
   Other: 'tier_3',
 };
 
 // Sorted city names for the dropdown
 export const cityOptions = Object.keys(cityTierMapping).sort((a, b) => {
-  // Put "Other" at the end
   if (a === 'Other') return 1;
   if (b === 'Other') return -1;
   return a.localeCompare(b);
 });
+
+// Niche Options
+export const nicheOptions = Object.keys(NICHE_MULTIPLIERS);

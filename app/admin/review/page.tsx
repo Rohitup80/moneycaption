@@ -37,6 +37,9 @@ export default function AdminReviewPage() {
   const [engagementInputs, setEngagementInputs] = useState<
     Record<string, string>
   >({});
+  const [avgViewsInputs, setAvgViewsInputs] = useState<
+    Record<string, string>
+  >({});
 
   // Simple password gate (basic auth for internal use)
   const ADMIN_PASSWORD = "moneycaption-admin-2024";
@@ -96,12 +99,15 @@ export default function AdminReviewPage() {
       return;
     }
 
+    const avgViews = parseInt(avgViewsInputs[queueId] || "");
+
     try {
       // Update creator profile
       await supabase
         .from("creator_profiles")
         .update({
           engagement_rate: rate,
+          avg_views_instagram: isNaN(avgViews) ? null : avgViews,
           engagement_source: "manual_calculated",
           engagement_calculated_by: "admin",
           updated_at: new Date().toISOString(),
@@ -321,29 +327,50 @@ export default function AdminReviewPage() {
 
                     {/* Review action */}
                     <div className="lg:w-72 flex flex-col gap-3">
-                      <label className="mc-label">
-                        Calculated Engagement Rate (%)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0.1"
-                        max="100"
-                        placeholder="e.g. 3.5"
-                        className="mc-input"
-                        value={engagementInputs[item.id] || ""}
-                        onChange={(e) =>
-                          setEngagementInputs((prev) => ({
-                            ...prev,
-                            [item.id]: e.target.value,
-                          }))
-                        }
-                      />
+                      <div>
+                        <label className="mc-label">
+                          Calculated Engagement Rate (%)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="100"
+                          placeholder="e.g. 3.5"
+                          className="mc-input"
+                          value={engagementInputs[item.id] || ""}
+                          onChange={(e) =>
+                            setEngagementInputs((prev) => ({
+                              ...prev,
+                              [item.id]: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mc-label">
+                          Avg Reel Views (Optional)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="Check creator's last 10 Reels"
+                          className="mc-input"
+                          value={avgViewsInputs[item.id] || ""}
+                          onChange={(e) =>
+                            setAvgViewsInputs((prev) => ({
+                              ...prev,
+                              [item.id]: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+
                       <button
                         onClick={() =>
                           handleReview(item.id, item.creator_id)
                         }
-                        className="mc-btn mc-btn-primary mc-btn-sm"
+                        className="mc-btn mc-btn-primary mc-btn-sm mt-2"
                       >
                         ✓ Submit Review
                       </button>

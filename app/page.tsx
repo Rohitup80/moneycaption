@@ -107,6 +107,12 @@ export default function LandingPage() {
             >
               Login
             </Link>
+            <Link
+              href="/profile?view=signup"
+              className="text-sm font-medium text-[--mc-text-secondary] hover:text-white transition-colors"
+            >
+              Sign Up
+            </Link>
             <Link href="/calculate" className="mc-btn mc-btn-primary mc-btn-sm">
               Calculate My Rate
             </Link>

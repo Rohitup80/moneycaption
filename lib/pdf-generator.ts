@@ -2,7 +2,7 @@
  * PDF Rate Card Generator using @react-pdf/renderer.
  *
  * Dynamically imported on the client to avoid SSR issues.
- * Generates a branded, downloadable PDF rate card.
+ * Generates a branded, downloadable PDF rate card with v2 selected prices.
  */
 
 import {
@@ -15,27 +15,20 @@ import {
   pdf,
 } from "@react-pdf/renderer";
 import { createElement } from "react";
-import type { RateResult } from "./rate-engine";
 
-// ──────────────────────────────────────────────
-// Font Registration (A3 fix — Noto Sans supports ₹)
-// ──────────────────────────────────────────────
+const isBrowser = typeof window !== 'undefined';
+const regularFontUrl = isBrowser ? `${window.location.origin}/fonts/NotoSans-Regular.ttf` : 'https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf';
+const boldFontUrl = isBrowser ? `${window.location.origin}/fonts/NotoSans-Bold.ttf` : 'https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSans/NotoSans-Bold.ttf';
 
 Font.register({
-  family: "Roboto",
+  family: 'NotoSans',
   fonts: [
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Regular.ttf",
-      fontWeight: 400,
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.66/fonts/Roboto/Roboto-Medium.ttf",
-      fontWeight: 700,
-    },
+    { src: regularFontUrl, fontWeight: 'normal' },
+    { src: boldFontUrl, fontWeight: 'bold' },
   ],
 });
 
-// Disable hyphenation (causes issues with currency symbols)
+// Disable hyphenation
 Font.registerHyphenationCallback((word) => [word]);
 
 // ──────────────────────────────────────────────
@@ -47,7 +40,8 @@ export interface PdfInput {
   niche: string;
   cityTier: string;
   verificationTier: string;
-  results: RateResult[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  results: any[]; // RateCardResult[]
   calculatedAt: string;
 }
 
@@ -71,7 +65,7 @@ const styles = StyleSheet.create({
   page: {
     backgroundColor: colors.bg,
     padding: 40,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
     color: colors.text,
   },
   header: {
@@ -85,9 +79,9 @@ const styles = StyleSheet.create({
   },
   logoText: {
     fontSize: 22,
-    fontWeight: 700,
+    fontWeight: "bold",
     color: colors.primary,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
   badge: {
     fontSize: 8,
@@ -96,24 +90,24 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: colors.bgCard,
     color: colors.textSecondary,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
   creatorSection: {
     marginBottom: 24,
   },
   creatorName: {
     fontSize: 24,
-    fontWeight: 700,
+    fontWeight: "bold",
     marginBottom: 6,
     color: colors.text,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
   creatorMeta: {
     fontSize: 10,
     color: colors.textSecondary,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
-  // A4 fix — platform header is now a flex row with gap, not a single Text
+  // Platform header row — icon + name in flex row (Step 6)
   platformHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -126,14 +120,16 @@ const styles = StyleSheet.create({
   },
   platformIcon: {
     fontSize: 14,
-    width: 20,
-    fontFamily: "Roboto",
+    width: 24,
+    fontWeight: "bold",
+    color: colors.accent,
+    fontFamily: "NotoSans",
   },
   platformName: {
     fontSize: 14,
-    fontWeight: 700,
+    fontWeight: "bold",
     color: colors.primary,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
   tableHeader: {
     flexDirection: "row",
@@ -145,11 +141,11 @@ const styles = StyleSheet.create({
   },
   tableHeaderText: {
     fontSize: 8,
-    fontWeight: 700,
+    fontWeight: "bold",
     color: colors.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
   tableRow: {
     flexDirection: "row",
@@ -157,25 +153,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    alignItems: "center",
   },
-  col1: { width: "35%" },
-  col2: { width: "35%" },
-  col3: { width: "30%" },
+  col1: { width: "60%" },
+  col2: { width: "40%" },
   cellText: {
     fontSize: 10,
     color: colors.text,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
-  suggestedQuote: {
-    fontSize: 10,
-    fontWeight: 700,
+  selectedPrice: {
+    fontSize: 11,
+    fontWeight: "bold",
     color: colors.success,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
-  customQuote: {
-    fontSize: 10,
-    color: colors.warning,
-    fontFamily: "Roboto",
+  tierBadge: {
+    fontSize: 7,
+    color: colors.textSecondary,
+    fontFamily: "NotoSans",
+    marginTop: 1,
   },
   footer: {
     position: "absolute",
@@ -191,7 +188,7 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 8,
     color: colors.textSecondary,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
   disclaimer: {
     marginTop: 30,
@@ -203,19 +200,13 @@ const styles = StyleSheet.create({
     fontSize: 7,
     color: colors.textSecondary,
     lineHeight: 1.5,
-    fontFamily: "Roboto",
+    fontFamily: "NotoSans",
   },
 });
 
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
-
-function formatINR(amount: number): string {
-  if (amount === 0) return "—";
-  // Use INR formatting with the actual ₹ symbol
-  return `\u20B9${amount.toLocaleString("en-IN")}`;
-}
 
 function getCityTierLabel(tier: string): string {
   return tier.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase());
@@ -236,7 +227,6 @@ function getVerificationLabel(tier: string): string {
   }
 }
 
-// A4 fix — use text labels instead of emoji for PDF (emoji renders poorly in PDF fonts)
 const PLATFORM_LABELS: Record<string, { icon: string; name: string }> = {
   instagram: { icon: "IG", name: "Instagram" },
   youtube: { icon: "YT", name: "YouTube" },
@@ -248,12 +238,6 @@ const PLATFORM_LABELS: Record<string, { icon: string; name: string }> = {
 // ──────────────────────────────────────────────
 
 function buildRateCardDocument(data: PdfInput) {
-  const resultsByPlatform = data.results.reduce((acc, r) => {
-    if (!acc[r.platform]) acc[r.platform] = [];
-    acc[r.platform].push(r);
-    return acc;
-  }, {} as Record<string, RateResult[]>);
-
   const formattedDate = new Date(data.calculatedAt).toLocaleDateString("en-IN", {
     year: "numeric",
     month: "long",
@@ -288,24 +272,24 @@ function buildRateCardDocument(data: PdfInput) {
           `${data.niche}  |  ${getCityTierLabel(data.cityTier)}  |  Generated ${formattedDate}`
         )
       ),
-      // Rate tables per platform (A4 fix — icon and name in separate Text elements)
-      ...Object.entries(resultsByPlatform).map(([platform, platformResults]) =>
+      // Rate tables per platform (Step 9 selected price logic)
+      ...data.results.map((p) =>
         createElement(
           View,
-          { key: platform },
-          // Platform header row — icon + name in flex row (A4 fix)
+          { key: p.platform },
+          // Platform header row — icon + name in flex row
           createElement(
             View,
             { style: styles.platformHeaderRow },
             createElement(
               Text,
               { style: styles.platformIcon },
-              PLATFORM_LABELS[platform]?.icon || platform.charAt(0).toUpperCase()
+              PLATFORM_LABELS[p.platform]?.icon || p.platform.charAt(0).toUpperCase()
             ),
             createElement(
               Text,
               { style: styles.platformName },
-              PLATFORM_LABELS[platform]?.name || platform
+              PLATFORM_LABELS[p.platform]?.name || p.platform
             )
           ),
           // Table header
@@ -319,48 +303,37 @@ function buildRateCardDocument(data: PdfInput) {
             ),
             createElement(
               Text,
-              { style: { ...styles.tableHeaderText, ...styles.col2 } },
-              "Rate Range"
-            ),
-            createElement(
-              Text,
-              { style: { ...styles.tableHeaderText, ...styles.col3 } },
-              "Suggested Quote"
+              { style: { ...styles.tableHeaderText, ...styles.col2, textAlign: "right" } },
+              "Suggested Rate"
             )
           ),
           // Table rows
-          ...platformResults.map((r) =>
+          ...p.deliverables.map((d: any) =>
             createElement(
               View,
-              { key: r.deliverableKey, style: styles.tableRow },
+              { key: d.id, style: styles.tableRow },
               createElement(
                 Text,
                 { style: { ...styles.cellText, ...styles.col1 } },
-                r.deliverableLabel
+                d.label
               ),
               createElement(
-                Text,
-                {
-                  style: {
-                    ...(r.isCustomQuote ? styles.customQuote : styles.cellText),
-                    ...styles.col2,
-                  },
-                },
-                r.isCustomQuote
-                  ? `${formatINR(r.rateMin)}+ (Custom)`
-                  : `${formatINR(r.rateMin)} – ${formatINR(r.rateMax)}`
-              ),
-              createElement(
-                Text,
-                {
-                  style: {
-                    ...(r.isCustomQuote
-                      ? styles.customQuote
-                      : styles.suggestedQuote),
-                    ...styles.col3,
-                  },
-                },
-                r.isCustomQuote ? "Contact for quote" : formatINR(r.suggestedQuote)
+                View,
+                { style: { ...styles.col2, alignItems: "flex-end" } },
+                createElement(
+                  Text,
+                  { style: styles.selectedPrice },
+                  `\u20B9${(d.selectedPrice ?? d.marketStandard).toLocaleString("en-IN")}`
+                ),
+                createElement(
+                  Text,
+                  { style: styles.tierBadge },
+                  d.selectedTier === "contentFee"
+                    ? "Content Fee"
+                    : d.selectedTier === "brandInvestment"
+                    ? "Brand Investment"
+                    : "Market Standard"
+                )
               )
             )
           )

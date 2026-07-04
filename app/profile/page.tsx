@@ -79,6 +79,18 @@ export default function ProfilePage() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get("view");
+      if (mode === "signup") {
+        setView("signup");
+      } else if (mode === "login") {
+        setView("login");
+      }
+    }
+  }, []);
+
   async function loadProfileAndHistory(uid: string) {
     setLoading(true);
     try {
@@ -168,13 +180,17 @@ export default function ProfilePage() {
           const calcData = JSON.parse(stored);
           const { calculateRates } = await import("@/lib/rate-engine");
           const computedRates = calculateRates({
-            platforms: calcData.platforms,
-            followersInstagram: calcData.followersInstagram,
-            followersYoutube: calcData.followersYoutube,
-            followersFacebook: calcData.followersFacebook,
+            platforms: {
+              instagram: calcData.platforms.includes("instagram") ? calcData.followersInstagram : undefined,
+              youtube: calcData.platforms.includes("youtube") ? calcData.followersYoutube : undefined,
+              facebook: calcData.platforms.includes("facebook") ? calcData.followersFacebook : undefined,
+            },
             niche: calcData.niche,
             cityTier: calcData.cityTier,
             engagementRate: calcData.engagementRate,
+            avgViewsInstagram: calcData.avgViewsInstagram ?? null,
+            avgViewsYoutube: calcData.avgViewsYoutube ?? null,
+            avgViewsFacebook: calcData.avgViewsFacebook ?? null,
           });
 
           await supabase.from("rate_calculations").insert({
@@ -210,7 +226,7 @@ export default function ProfilePage() {
   // ── Password Login ──
   async function handleLogin() {
     if (!email || !password) {
-      setError("Please enter your email and password.");
+      setError("Please enter both email and password.");
       return;
     }
 
@@ -219,16 +235,51 @@ export default function ProfilePage() {
     setSuccessMsg("");
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (authError) throw authError;
 
-      // Session listener will transition to dashboard and load details
+      setSuccessMsg("Logged in successfully!");
+      if (data.user) {
+        setUserId(data.user.id);
+        setView("dashboard");
+        loadProfileAndHistory(data.user.id);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Login failed.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Email OTP / Magic Link Login ──
+  async function handleLoginWithMagicLink() {
+    if (!email) {
+      setError("Please enter your email.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSuccessMsg("");
+
+    try {
+      const { error: authError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: window.location.origin + "/profile",
+        },
+      });
+
+      if (authError) throw authError;
+
+      setSuccessMsg("Check your email for a magic link to sign in!");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Magic link request failed.";
       setError(message);
     } finally {
       setLoading(false);
@@ -413,7 +464,7 @@ export default function ProfilePage() {
 
             {/* LOGIN FORM */}
             {view === "login" && (
-              <div className="mc-card p-8 space-y-6">
+              <div className="mc-card p-8 space-y-5">
                 <div>
                   <label htmlFor="login-email" className="mc-label">
                     Email Address
@@ -434,19 +485,41 @@ export default function ProfilePage() {
                   <input
                     id="login-password"
                     type="password"
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     className="mc-input"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
-                <button
-                  onClick={handleLogin}
-                  disabled={loading}
-                  className="mc-btn mc-btn-primary w-full"
-                >
-                  {loading ? "Logging in..." : "Login"}
-                </button>
+                <div className="space-y-3 pt-2">
+                  <button
+                    onClick={handleLogin}
+                    disabled={loading}
+                    className="mc-btn mc-btn-primary w-full"
+                  >
+                    {loading ? "Logging in..." : "Login →"}
+                  </button>
+                  <button
+                    onClick={handleLoginWithMagicLink}
+                    disabled={loading}
+                    className="mc-btn mc-btn-secondary w-full text-xs py-2"
+                  >
+                    {loading ? "Requesting..." : "Or Sign In with Magic Link"}
+                  </button>
+                </div>
+                <div className="text-center pt-2 border-t border-[--mc-border]">
+                  <span className="text-xs text-[--mc-text-secondary]">New user? </span>
+                  <button
+                    onClick={() => {
+                      setView("signup");
+                      setError("");
+                      setSuccessMsg("");
+                    }}
+                    className="text-xs text-[--mc-primary-light] hover:underline"
+                  >
+                    Create an account
+                  </button>
+                </div>
               </div>
             )}
 
@@ -550,6 +623,19 @@ export default function ProfilePage() {
                 >
                   {loading ? "Registering..." : "Create Account →"}
                 </button>
+                <div className="text-center pt-2 border-t border-[--mc-border]">
+                  <span className="text-xs text-[--mc-text-secondary]">Already have an account? </span>
+                  <button
+                    onClick={() => {
+                      setView("login");
+                      setError("");
+                      setSuccessMsg("");
+                    }}
+                    className="text-xs text-[--mc-primary-light] hover:underline"
+                  >
+                    Log In
+                  </button>
+                </div>
               </div>
             )}
           </div>
