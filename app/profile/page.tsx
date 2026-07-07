@@ -41,6 +41,7 @@ export default function ProfilePage() {
   const [history, setHistory] = useState<RateCalculation[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [savedCards, setSavedCards] = useState<any[]>([]);
 
   // Edit form states
   const [editName, setEditName] = useState("");
@@ -55,6 +56,7 @@ export default function ProfilePage() {
         data: { session },
       } = await supabase.auth.getSession();
       if (session?.user) {
+        await linkPastCalculations(session.user.id);
         setUserId(session.user.id);
         setView("dashboard");
         loadProfileAndHistory(session.user.id);
@@ -64,8 +66,9 @@ export default function ProfilePage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
+        await linkPastCalculations(session.user.id);
         setUserId(session.user.id);
         setView("dashboard");
         loadProfileAndHistory(session.user.id);
@@ -103,6 +106,27 @@ export default function ProfilePage() {
         .single();
 
       if (profileData) {
+        // Enforce creator account approval check
+        if (profileData.approval_status === "pending") {
+          await supabase.auth.signOut();
+          setUserId(null);
+          setProfile(null);
+          setHistory([]);
+          setView("login");
+          setError("Your account is pending verification. The admin will review it shortly.");
+          setLoading(false);
+          return;
+        } else if (profileData.approval_status === "rejected") {
+          await supabase.auth.signOut();
+          setUserId(null);
+          setProfile(null);
+          setHistory([]);
+          setView("login");
+          setError("Your account has been rejected by the admin. You cannot log in.");
+          setLoading(false);
+          return;
+        }
+
         setProfile(profileData);
         setEditName(profileData.name || "");
         setEditPhone(profileData.phone || "");
@@ -123,6 +147,17 @@ export default function ProfilePage() {
 
       if (historyData) {
         setHistory(historyData);
+      }
+
+      // Load active rate cards from rate_cards table
+      if (profileData) {
+        const { data: cardsData } = await supabase
+          .from("rate_cards")
+          .select("*")
+          .eq("creator_id", profileData.id);
+        if (cardsData) {
+          setSavedCards(cardsData);
+        }
       }
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
@@ -152,6 +187,7 @@ export default function ProfilePage() {
         avgViewsFacebook: calcData.avgViewsFacebook ?? null,
       });
 
+      // 1. Save calculation history
       await supabase.from("rate_calculations").insert({
         user_id: userId,
         creator_name: calcData.creatorName,
@@ -168,6 +204,55 @@ export default function ProfilePage() {
         avg_views_facebook: calcData.avgViewsFacebook || null,
         results_json: computedRates,
       });
+
+      // 2. Resolve creator profile ID
+      let profileId = calcData.profileId;
+      if (!profileId) {
+        const { data: profile } = await supabase
+          .from("creator_profiles")
+          .select("id")
+          .eq("user_id", userId)
+          .single();
+        if (profile) {
+          profileId = profile.id;
+        } else {
+          // Create baseline profile if not found
+          const { data: newProfile } = await supabase
+            .from("creator_profiles")
+            .insert({
+              user_id: userId,
+              name: calcData.creatorName,
+              niche: calcData.niche,
+              city_tier: calcData.cityTier,
+              verification_tier: calcData.verificationTier,
+              instagram_handle: calcData.handleInstagram || null,
+              youtube_handle: calcData.handleYoutube || null,
+              facebook_handle: calcData.handleFacebook || null,
+              followers_instagram: calcData.followersInstagram || null,
+              followers_youtube: calcData.followersYoutube || null,
+              followers_facebook: calcData.followersFacebook || null,
+            })
+            .select("id")
+            .single();
+          if (newProfile) {
+            profileId = newProfile.id;
+          }
+        }
+      }
+
+      // 3. Save rate cards
+      if (profileId) {
+        const { applyPriceSelection, flattenForDatabase } = await import("@/lib/rate-engine");
+        const selections: Record<string, "marketStandard"> = {};
+        computedRates.forEach((platform) => {
+          platform.deliverables.forEach((d) => {
+            selections[d.id] = "marketStandard";
+          });
+        });
+        const resultsWithSelections = applyPriceSelection(computedRates, selections);
+        const rows = flattenForDatabase(profileId, resultsWithSelections);
+        await supabase.from("rate_cards").upsert(rows);
+      }
 
       // Clear after linking
       sessionStorage.removeItem("mc_calc_input");
@@ -206,6 +291,22 @@ export default function ProfilePage() {
       return;
     }
 
+    // Email format check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address with a domain (e.g. you@example.com).");
+      return;
+    }
+
+    // Phone number length check
+    if (phone) {
+      const cleanPhone = phone.replace(/\D/g, "");
+      if (cleanPhone.length !== 10) {
+        setError("Phone number must contain exactly 10 digits.");
+        return;
+      }
+    }
+
     setLoading(true);
     setError("");
     setSuccessMsg("");
@@ -236,14 +337,12 @@ export default function ProfilePage() {
           city_tier: cityTier,
           verification_tier: "self_reported",
           engagement_source: "self_reported",
+          approval_status: "pending", // New creator pending admin approval
         });
 
       if (profileError) {
         console.error("Failed to insert profile row:", profileError);
       }
-
-      // 3. Link any calculations stored in sessionStorage
-      await linkPastCalculations(authData.user.id);
 
       setSuccessMsg("Registration successful! Please check your email to verify your account before logging in.");
       setTimeout(() => {
@@ -280,6 +379,27 @@ export default function ProfilePage() {
       if (data.user && !data.user.email_confirmed_at) {
         await supabase.auth.signOut();
         throw new Error("Please verify your email address before logging in. Check your inbox for the verification link.");
+      }
+
+      // Check account approval status
+      if (data.user) {
+        const { data: profileData, error: profileErr } = await supabase
+          .from("creator_profiles")
+          .select("approval_status")
+          .eq("user_id", data.user.id)
+          .single();
+
+        if (profileErr) {
+          console.error("Error loading profile status during login:", profileErr);
+        } else if (profileData) {
+          if (profileData.approval_status === "pending") {
+            await supabase.auth.signOut();
+            throw new Error("Your account is pending verification. The admin will review it shortly.");
+          } else if (profileData.approval_status === "rejected") {
+            await supabase.auth.signOut();
+            throw new Error("Your account has been rejected by the admin. You cannot log in.");
+          }
+        }
       }
 
       setSuccessMsg("Logged in successfully!");
@@ -714,7 +834,10 @@ export default function ProfilePage() {
                     <ProfileRow label="Name" value={profile?.name || "—"} />
                     <ProfileRow label="Email" value={profile?.email || "—"} />
                     <ProfileRow label="Phone" value={profile?.phone || "—"} />
-                    <ProfileRow label="Niche" value={profile?.niche || "—"} />
+                    <ProfileRow
+                      label="Niche"
+                      value={profile?.niche ? profile.niche.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase()) : "—"}
+                    />
                     <ProfileRow
                       label="Location Tier"
                       value={profile?.city_tier?.replace("_", " ").toUpperCase() || "—"}
@@ -723,6 +846,36 @@ export default function ProfilePage() {
                       label="Engagement Rate"
                       value={profile?.engagement_rate ? `${profile.engagement_rate}%` : "Pending Review"}
                     />
+
+                    {/* Social Handles & Stats */}
+                    {profile?.instagram_handle && (
+                      <div className="border-t border-[--mc-border] pt-3 mt-2 text-left space-y-1">
+                        <p className="text-xs font-semibold text-[--mc-text-secondary]">📸 Instagram</p>
+                        <ProfileRow label="Handle" value={`@${profile.instagram_handle.replace(/^@/, "")}`} />
+                        {profile.followers_instagram !== null && profile.followers_instagram !== undefined && (
+                          <ProfileRow label="Followers" value={profile.followers_instagram.toLocaleString("en-IN")} />
+                        )}
+                      </div>
+                    )}
+                    {profile?.youtube_handle && (
+                      <div className="border-t border-[--mc-border] pt-3 mt-2 text-left space-y-1">
+                        <p className="text-xs font-semibold text-[--mc-text-secondary]">🎬 YouTube</p>
+                        <ProfileRow label="Channel" value={`@${profile.youtube_handle.replace(/^@/, "")}`} />
+                        {profile.followers_youtube !== null && profile.followers_youtube !== undefined && (
+                          <ProfileRow label="Subscribers" value={profile.followers_youtube.toLocaleString("en-IN")} />
+                        )}
+                      </div>
+                    )}
+                    {profile?.facebook_handle && (
+                      <div className="border-t border-[--mc-border] pt-3 mt-2 text-left space-y-1">
+                        <p className="text-xs font-semibold text-[--mc-text-secondary]">📘 Facebook</p>
+                        <ProfileRow label="Page" value={profile.facebook_handle} />
+                        {profile.followers_facebook !== null && profile.followers_facebook !== undefined && (
+                          <ProfileRow label="Followers" value={profile.followers_facebook.toLocaleString("en-IN")} />
+                        )}
+                      </div>
+                    )}
+
                     {profile?.screenshot_url && (
                       <div className="border-t border-[--mc-border] pt-3 mt-2 space-y-2 text-left">
                         <div className="flex justify-between items-center text-xs">
@@ -820,25 +973,77 @@ export default function ProfilePage() {
                 )}
               </div>
 
-              {/* History & Past Activities Panel (Col 2 & 3) */}
-              <div className="lg:col-span-2 mc-card p-6 space-y-6">
-                <div className="flex justify-between items-center border-b border-[--mc-border] pb-4">
-                  <h2 className="font-semibold text-lg">Rate Card Calculation History</h2>
-                  <a href="/calculate" className="mc-btn mc-btn-primary mc-btn-sm">
-                    + Generate New
-                  </a>
+              {/* History & Saved Rates Panel (Col 2 & 3) */}
+              <div className="lg:col-span-2 space-y-8">
+                {/* Active Saved Rates Card */}
+                <div className="mc-card p-6 space-y-6">
+                  <div className="flex justify-between items-center border-b border-[--mc-border] pb-4">
+                    <div>
+                      <h2 className="font-semibold text-lg text-left">My Saved Rate Cards</h2>
+                      <p className="text-xs text-[--mc-text-secondary] mt-1 text-left">
+                        These are your saved deliverable prices verified on your profile.
+                      </p>
+                    </div>
+                  </div>
+
+                  {savedCards.length === 0 ? (
+                    <div className="text-center py-6">
+                      <p className="text-[--mc-text-secondary] text-sm">
+                        No active rate cards saved. Run a calculation and download the PDF to save your pricing.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {Object.entries(
+                        savedCards.reduce((acc: any, card: any) => {
+                          if (!acc[card.platform]) {
+                            acc[card.platform] = [];
+                          }
+                          acc[card.platform].push(card);
+                          return acc;
+                        }, {})
+                      ).map(([platform, cards]: [string, any]) => (
+                        <div key={platform} className="glass p-4 rounded-xl space-y-3 text-left">
+                          <h3 className="font-semibold text-sm flex items-center gap-2 capitalize">
+                            {platform === "instagram" ? "📸" : platform === "youtube" ? "🎬" : "📘"} {platform}
+                          </h3>
+                          <div className="space-y-2">
+                            {cards.map((card: any) => (
+                              <div key={card.id} className="flex justify-between items-center text-xs py-1 border-b border-[--mc-border] last:border-0">
+                                <span className="text-[--mc-text-secondary] capitalize">
+                                  {card.deliverable_type.replace(/_/g, " ").replace(platform, "").trim()}
+                                </span>
+                                <span className="font-bold text-[--mc-success]">
+                                  ₹{parseFloat(card.calculated_rate_median).toLocaleString("en-IN")}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {history.length === 0 ? (
-                  <div className="text-center py-12">
-                    <span className="text-4xl block mb-3">📊</span>
-                    <p className="text-[--mc-text-secondary] text-sm mb-4">
-                      You haven&apos;t saved any rate card calculations yet.
-                    </p>
-                    <a href="/calculate" className="mc-btn mc-btn-secondary inline-block">
-                      Calculate Your First Rate
+                {/* Calculations History Card */}
+                <div className="mc-card p-6 space-y-6">
+                  <div className="flex justify-between items-center border-b border-[--mc-border] pb-4">
+                    <h2 className="font-semibold text-lg">Rate Card Calculation History</h2>
+                    <a href="/calculate" className="mc-btn mc-btn-primary mc-btn-sm cursor-pointer">
+                      + Generate New
                     </a>
                   </div>
+
+                  {history.length === 0 ? (
+                    <div className="text-center py-12">
+                      <span className="text-4xl block mb-3">📊</span>
+                      <p className="text-[--mc-text-secondary] text-sm mb-4">
+                        You haven&apos;t saved any rate card calculations yet.
+                      </p>
+                      <a href="/calculate" className="mc-btn mc-btn-secondary inline-block">
+                        Calculate Your First Rate
+                      </a>
+                    </div>
                 ) : (
                   <div className="space-y-4">
                     {history.map((calc) => (
@@ -850,7 +1055,7 @@ export default function ProfilePage() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-white">{calc.creator_name}</span>
                             <span className="text-xs text-[--mc-text-muted]">•</span>
-                            <span className="text-xs text-[--mc-text-secondary]">{calc.niche}</span>
+                            <span className="text-xs text-[--mc-text-secondary]">{calc.niche.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}</span>
                           </div>
                           <div className="flex items-center gap-3 text-xs text-[--mc-text-muted] flex-wrap">
                             <span>
@@ -890,7 +1095,8 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
       </main>
 
       {/* Screenshot Upload Modal */}

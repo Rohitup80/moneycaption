@@ -9,18 +9,18 @@
   --mc-accent: #00D2D3;
   --mc-accent-dark: #01A3A4;
 
-  /* Neutrals (dark mode first — this is our primary theme) */
-  --mc-bg-primary: #0B0D17;
-  --mc-bg-secondary: #131629;
-  --mc-bg-card: #1A1D35;
-  --mc-bg-elevated: #222645;
+  /* Neutrals (lite mode theme with rich slate/grey contrast depths) */
+  --mc-bg-primary: #EEF2F6;      /* Soft light blue-grey background */
+  --mc-bg-secondary: #F1F5F9;    /* Container base backgrounds */
+  --mc-bg-card: #FFFFFF;         /* Pure white container cards for visual contrast */
+  --mc-bg-elevated: #E2E8F0;     /* Elevated input, button, and active tab backdrops */
 
-  --mc-text-primary: #F0F0F5;
-  --mc-text-secondary: #9CA3AF;
-  --mc-text-muted: #6B7280;
+  --mc-text-primary: #0F172A;    /* Primary text (Slate 900) */
+  --mc-text-secondary: #334155;  /* Secondary text (Slate 700) */
+  --mc-text-muted: #64748B;      /* Muted helper text (Slate 500) */
 
-  --mc-border: rgba(255, 255, 255, 0.08);
-  --mc-border-hover: rgba(255, 255, 255, 0.15);
+  --mc-border: rgba(148, 163, 184, 0.18);       /* Clean outlines */
+  --mc-border-hover: rgba(148, 163, 184, 0.35);  /* Hovered states */
 
   /* Status */
   --mc-success: #10B981;
@@ -29,14 +29,14 @@
 
   /* Gradients */
   --mc-gradient-hero: linear-gradient(135deg, #6C5CE7 0%, #00D2D3 100%);
-  --mc-gradient-card: linear-gradient(135deg, rgba(108, 92, 231, 0.08) 0%, rgba(0, 210, 211, 0.05) 100%);
-  --mc-gradient-glow: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(108, 92, 231, 0.08), transparent 40%);
+  --mc-gradient-card: linear-gradient(135deg, rgba(108, 92, 231, 0.03) 0%, rgba(0, 210, 211, 0.02) 100%);
+  --mc-gradient-glow: radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(108, 92, 231, 0.04), transparent 40%);
 
   /* Shadows */
-  --mc-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --mc-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --mc-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
-  --mc-shadow-glow: 0 0 40px rgba(108, 92, 231, 0.3);
+  --mc-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --mc-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.05);
+  --mc-shadow-lg: 0 8px 32px rgba(15, 23, 42, 0.08);
+  --mc-shadow-glow: 0 0 40px rgba(108, 92, 231, 0.15);
 
   /* Typography */
   --mc-font-sans: var(--font-outfit), system-ui, -apple-system, sans-serif;
@@ -167,14 +167,14 @@ body {
 
 /* ─── Glassmorphism Utility ─── */
 .glass {
-  background: rgba(26, 29, 53, 0.6);
+  background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--mc-border);
 }
 
 .glass-hover:hover {
-  background: rgba(34, 38, 69, 0.7);
+  background: rgba(255, 255, 255, 0.95);
   border-color: var(--mc-border-hover);
 }
 

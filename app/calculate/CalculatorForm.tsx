@@ -22,7 +22,13 @@ const supabase = createClient(
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  phone: z.string().optional(),
+  phone: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || /^\d{10}$/.test(val.replace(/\D/g, "")),
+      "Phone number must be exactly 10 digits"
+    ),
   city: z.string().min(1, "Please select your city"),
   platforms: z
     .array(z.enum(["instagram", "youtube", "facebook"]))
@@ -99,6 +105,8 @@ export default function CalculatorForm() {
     control,
     setValue,
     trigger,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -277,24 +285,31 @@ export default function CalculatorForm() {
   const validateStep = async () => {
     switch (currentStep) {
       case 1:
-        return trigger(["name", "city"]);
+        return trigger(["name", "city", "phone"]);
       case 2: {
         const platformValid = await trigger("platforms");
         if (!platformValid) return false;
         // Validate follower counts for selected platforms
+        let allValid = true;
         for (const p of selectedPlatforms) {
-          const field = `followers_${p}` as keyof FormValues;
+          const field = `followers_${p}` as "followers_instagram" | "followers_youtube" | "followers_facebook";
           const val = watch(field);
-          if (!val || (typeof val === "number" && val < 1000)) {
-            return false;
+          if (val === undefined || val === null || isNaN(Number(val)) || Number(val) < 1000) {
+            setError(field, {
+              type: "manual",
+              message: "Follower count is required and must be at least 1,000",
+            });
+            allValid = false;
+          } else {
+            clearErrors(field);
           }
         }
-        return true;
+        return allValid;
       }
       case 3:
         return trigger("niche");
       case 4:
-        return true; // engagement is optional
+        return trigger(["engagement_rate", "avgViewsInstagram", "avgViewsYoutube", "avgViewsFacebook"]);
       default:
         return true;
     }
@@ -582,6 +597,9 @@ export default function CalculatorForm() {
               className="mc-input"
               {...register("phone")}
             />
+            {errors.phone && (
+              <p className="mc-error-text mt-1">{errors.phone.message}</p>
+            )}
             <p className="text-xs text-[--mc-text-muted] mt-1">
               Used for OTP login later — not required now
             </p>
@@ -760,6 +778,11 @@ export default function CalculatorForm() {
                                 { valueAsNumber: true }
                               )}
                             />
+                            {errors[`followers_${platform.value}` as keyof FormValues] && (
+                              <p className="mc-error-text mt-1">
+                                {errors[`followers_${platform.value}` as keyof FormValues]?.message}
+                              </p>
+                            )}
                             <p className="text-xs text-[--mc-text-muted] mt-1">
                               Minimum 1,000 followers required
                             </p>
@@ -832,7 +855,7 @@ export default function CalculatorForm() {
                           color: isSelected ? "var(--mc-text-primary)" : "var(--mc-text-secondary)",
                         }}
                       >
-                        {niche}
+                        {niche.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
                       </span>
                       {isSelected && (
                         <span className="ml-auto text-xs font-semibold text-[--mc-primary-light]">
@@ -885,6 +908,9 @@ export default function CalculatorForm() {
                   v === "" || v === undefined ? null : parseFloat(v),
               })}
             />
+            {errors.engagement_rate && (
+              <p className="mc-error-text mt-1">{errors.engagement_rate.message}</p>
+            )}
 
             {/* Show if Instagram was selected */}
             {selectedPlatforms.includes("instagram") && (
@@ -900,6 +926,9 @@ export default function CalculatorForm() {
                       v === "" || v === undefined ? null : parseInt(v, 10),
                   })}
                 />
+                {errors.avgViewsInstagram && (
+                  <p className="mc-error-text mt-1">{errors.avgViewsInstagram.message}</p>
+                )}
                 <p className="text-xs text-[--mc-text-muted] mt-1">
                   Open your last 10 Reels, average the view counts.
                   This makes your rate card significantly more accurate.
@@ -921,6 +950,9 @@ export default function CalculatorForm() {
                       v === "" || v === undefined ? null : parseInt(v, 10),
                   })}
                 />
+                {errors.avgViewsYoutube && (
+                  <p className="mc-error-text mt-1">{errors.avgViewsYoutube.message}</p>
+                )}
               </div>
             )}
 
@@ -938,6 +970,9 @@ export default function CalculatorForm() {
                       v === "" || v === undefined ? null : parseInt(v, 10),
                   })}
                 />
+                {errors.avgViewsFacebook && (
+                  <p className="mc-error-text mt-1">{errors.avgViewsFacebook.message}</p>
+                )}
               </div>
             )}
 
@@ -994,7 +1029,7 @@ export default function CalculatorForm() {
                 value={watch("followers_facebook")?.toLocaleString("en-IN") || "—"}
               />
             )}
-            <ReviewRow label="Niche" value={watch("niche")} />
+            <ReviewRow label="Niche" value={watch("niche")?.replace(/_/g, " ")?.replace(/\b\w/g, (l: string) => l.toUpperCase()) || "—"} />
             <ReviewRow
               label="Engagement Rate"
               value={

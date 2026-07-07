@@ -538,8 +538,10 @@ function buildRateCardDocument(data: PdfInput) {
                 ),
                 createElement(
                   Text,
-                  { style: styles.tierBadge },
-                  d.selectedTier === "contentFee"
+                  { style: { ...styles.tierBadge, color: d.selectedTier === "custom" ? colors.warning : colors.textSecondary } },
+                  d.selectedTier === "custom"
+                    ? "Edited by Creator"
+                    : d.selectedTier === "contentFee"
                     ? "Content Fee"
                     : d.selectedTier === "brandInvestment"
                     ? "Brand Investment"

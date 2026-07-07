@@ -37,7 +37,7 @@ export interface DeliverableRate {
   marketStandard:   number
   brandInvestment:  number
   selectedPrice?:   number
-  selectedTier?:    'contentFee' | 'marketStandard' | 'brandInvestment'
+  selectedTier?:    'contentFee' | 'marketStandard' | 'brandInvestment' | 'custom'
 }
 
 export interface RateCardResult {
@@ -123,15 +123,19 @@ export function calculateRates(input: RateEngineInput): RateCardResult[] {
 // Call this when creator selects a price tier on results page
 export function applyPriceSelection(
   results: RateCardResult[],
-  selections: Record<string, 'contentFee' | 'marketStandard' | 'brandInvestment'>,
+  selections: Record<string, 'contentFee' | 'marketStandard' | 'brandInvestment' | 'custom'>,
+  customPrices?: Record<string, number>,
 ): RateCardResult[] {
   return results.map(platform => ({
     ...platform,
     deliverables: platform.deliverables.map(d => {
-      const tier = selections[d.id] ?? 'marketStandard'
-      return { ...d, selectedTier: tier, selectedPrice: d[tier] }
+      const tier = selections[d.id] ?? 'marketStandard';
+      const price = tier === 'custom' && customPrices && customPrices[d.id] !== undefined
+        ? customPrices[d.id]
+        : d[tier as 'contentFee' | 'marketStandard' | 'brandInvestment'] ?? d.marketStandard;
+      return { ...d, selectedTier: tier, selectedPrice: price };
     }),
-  }))
+  }));
 }
 
 // Converts results to flat rows for rate_cards table insert
@@ -148,5 +152,5 @@ export function flattenForDatabase(creatorId: string, results: RateCardResult[])
       selected_price:        d.selectedPrice ?? null,
       selected_tier:         d.selectedTier  ?? null,
     }))
-  )
+  );
 }

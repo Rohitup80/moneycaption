@@ -76,8 +76,9 @@ export default function ResultsPage() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selections, setSelections] = useState<
-    Record<string, "contentFee" | "marketStandard" | "brandInvestment">
+    Record<string, "contentFee" | "marketStandard" | "brandInvestment" | "custom">
   >({});
+  const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
   const [pdfGenerator, setPdfGenerator] = useState<any>(null);
   const [recentPosts, setRecentPosts] = useState<any[]>([]);
   const [isFetchingPosts, setIsFetchingPosts] = useState(false);
@@ -200,7 +201,7 @@ export default function ResultsPage() {
     if (!calcData || !pdfGenerator) return;
     setIsGeneratingPdf(true);
     try {
-      const resultsWithSelections = applyPriceSelection(results, selections);
+      const resultsWithSelections = applyPriceSelection(results, selections, customPrices);
 
       // Trigger PDF download synchronously (Safari/mobile safe)
       pdfGenerator.generateRateCardPdf({
@@ -224,8 +225,23 @@ export default function ResultsPage() {
       });
 
       // Save to database in background
-      if (calcData.profileId) {
-        const rows = flattenForDatabase(calcData.profileId, resultsWithSelections);
+      let profileId = calcData.profileId;
+      if (!profileId) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from("creator_profiles")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .single();
+          if (profile) {
+            profileId = profile.id;
+          }
+        }
+      }
+
+      if (profileId) {
+        const rows = flattenForDatabase(profileId, resultsWithSelections);
         supabase.from("rate_cards").upsert(rows).then(({ error }) => {
           if (error) console.error("Database save error:", error);
         });
@@ -411,12 +427,17 @@ export default function ResultsPage() {
                             return (
                               <button
                                 key={tierOption.tier}
-                                onClick={() =>
+                                onClick={() => {
                                   setSelections((prev) => ({
                                     ...prev,
                                     [d.id]: tierOption.tier,
-                                  }))
-                                }
+                                  }));
+                                  setCustomPrices((prev) => {
+                                    const next = { ...prev };
+                                    delete next[d.id];
+                                    return next;
+                                  });
+                                }}
                                 className={`p-4 rounded-xl border text-left transition-all cursor-pointer ${
                                   isSelected
                                     ? tierOption.activeClass
@@ -435,6 +456,44 @@ export default function ResultsPage() {
                               </button>
                             );
                           })}
+                        </div>
+
+                        {/* Custom Price Overrides Input */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-3 pl-1 text-left">
+                          <label htmlFor={`custom-price-${d.id}`} className="text-xs font-medium text-[--mc-text-secondary] whitespace-nowrap">
+                            Or enter custom price:
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <div className="relative max-w-[160px]">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[--mc-text-muted]">₹</span>
+                              <input
+                                id={`custom-price-${d.id}`}
+                                type="number"
+                                placeholder="Custom rate"
+                                className="mc-input text-xs py-1.5 pl-6 pr-2.5 h-auto bg-[--mc-bg-primary] max-h-8"
+                                value={customPrices[d.id] || ""}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val) && val > 0) {
+                                    setCustomPrices((prev) => ({ ...prev, [d.id]: val }));
+                                    setSelections((prev) => ({ ...prev, [d.id]: "custom" }));
+                                  } else {
+                                    setCustomPrices((prev) => {
+                                      const next = { ...prev };
+                                      delete next[d.id];
+                                      return next;
+                                    });
+                                    setSelections((prev) => ({ ...prev, [d.id]: "marketStandard" }));
+                                  }
+                                }}
+                              />
+                            </div>
+                            {currentSelection === "custom" && (
+                              <span className="text-[10px] text-[--mc-warning] font-semibold flex items-center gap-1 animate-fade-in">
+                                ⚡ Edited by Creator
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
