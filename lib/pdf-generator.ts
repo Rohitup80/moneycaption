@@ -611,11 +611,11 @@ function buildRateCardDocument(data: PdfInput) {
       // Footer
       createElement(
         View,
-        { style: styles.footer },
+        { style: styles.footer, fixed: true },
         createElement(
           Text,
           { style: styles.footerText },
-          `Generated via moneycaption.com — ${formattedDate}`
+          `Verified & Generated via moneycaption.com — ${formattedDate}`
         ),
         createElement(
           Text,
@@ -637,11 +637,21 @@ export async function generateRateCardPdf(data: PdfInput): Promise<void> {
   const blob = await pdf(doc).toBlob();
 
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${data.creatorName.replace(/\s+/g, "_")}_RateCard_MoneyCaption.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  
+  // Mobile-safe fallback redirect
+  const isMobile = /iPad|iPhone|iPod|android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+
+  if (isMobile) {
+    window.location.href = url;
+  } else {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${data.creatorName.replace(/\s+/g, "_")}_RateCard_MoneyCaption.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 }

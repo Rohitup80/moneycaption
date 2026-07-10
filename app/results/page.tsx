@@ -364,6 +364,9 @@ export default function ResultsPage() {
                     <span className="text-sm text-[--mc-text-muted]">
                       ({(platform === "instagram" ? calcData.followersInstagram : platform === "youtube" ? calcData.followersYoutube : calcData.followersFacebook)?.toLocaleString("en-IN") || "0"} followers)
                     </span>
+                    <span className="mc-badge mc-badge-teal text-[10px] py-0.5 px-2 font-bold tracking-wide flex items-center gap-1 shadow-sm bg-teal-500/10 text-teal-600 border border-teal-500/10">
+                      🛡️ Verified by MoneyCaption
+                    </span>
                   </div>
 
                   <button

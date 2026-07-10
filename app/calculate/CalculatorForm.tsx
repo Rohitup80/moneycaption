@@ -350,6 +350,7 @@ export default function CalculatorForm() {
         name: data.name,
         phone: data.phone || null,
         niche: data.niche,
+        city: data.city,
         city_tier: cityTier,
         instagram_handle: data.handle_instagram || null,
         youtube_handle: data.handle_youtube || null,
@@ -426,6 +427,7 @@ export default function CalculatorForm() {
             user_id: session.user.id,
             creator_name: data.name,
             niche: data.niche,
+            city: data.city,
             city_tier: cityTier,
             verification_tier: verificationTier,
             platforms: data.platforms,
@@ -470,6 +472,7 @@ export default function CalculatorForm() {
         postsYoutube: data.platforms.includes("youtube") ? (postsCounts.youtube || null) : null,
         postsFacebook: data.platforms.includes("facebook") ? (postsCounts.facebook || null) : null,
         niche: data.niche,
+        city: data.city,
         cityTier,
         engagementRate: data.engagement_rate,
         creatorName: data.name,
@@ -495,6 +498,7 @@ export default function CalculatorForm() {
         followersYoutube: data.followers_youtube,
         followersFacebook: data.followers_facebook,
         niche: data.niche,
+        city: data.city,
         cityTier,
         engagementRate: data.engagement_rate,
         creatorName: data.name,
@@ -903,9 +907,11 @@ export default function CalculatorForm() {
               placeholder="e.g. 4.5"
               className="mc-input"
               {...register("engagement_rate", {
-                valueAsNumber: true,
-                setValueAs: (v: string) =>
-                  v === "" || v === undefined ? null : parseFloat(v),
+                setValueAs: (v) => {
+                  if (v === "" || v === undefined || v === null) return null;
+                  const parsed = parseFloat(v);
+                  return isNaN(parsed) ? null : parsed;
+                }
               })}
             />
             {errors.engagement_rate && (
@@ -921,9 +927,11 @@ export default function CalculatorForm() {
                   placeholder="e.g. 1200"
                   className="mc-input"
                   {...register("avgViewsInstagram", {
-                    valueAsNumber: true,
-                    setValueAs: (v: string) =>
-                      v === "" || v === undefined ? null : parseInt(v, 10),
+                    setValueAs: (v) => {
+                      if (v === "" || v === undefined || v === null) return null;
+                      const parsed = parseInt(v, 10);
+                      return isNaN(parsed) ? null : parsed;
+                    }
                   })}
                 />
                 {errors.avgViewsInstagram && (
@@ -945,9 +953,11 @@ export default function CalculatorForm() {
                   placeholder="e.g. 5000"
                   className="mc-input"
                   {...register("avgViewsYoutube", {
-                    valueAsNumber: true,
-                    setValueAs: (v: string) =>
-                      v === "" || v === undefined ? null : parseInt(v, 10),
+                    setValueAs: (v) => {
+                      if (v === "" || v === undefined || v === null) return null;
+                      const parsed = parseInt(v, 10);
+                      return isNaN(parsed) ? null : parsed;
+                    }
                   })}
                 />
                 {errors.avgViewsYoutube && (
@@ -965,9 +975,11 @@ export default function CalculatorForm() {
                   placeholder="e.g. 800"
                   className="mc-input"
                   {...register("avgViewsFacebook", {
-                    valueAsNumber: true,
-                    setValueAs: (v: string) =>
-                      v === "" || v === undefined ? null : parseInt(v, 10),
+                    setValueAs: (v) => {
+                      if (v === "" || v === undefined || v === null) return null;
+                      const parsed = parseInt(v, 10);
+                      return isNaN(parsed) ? null : parsed;
+                    }
                   })}
                 />
                 {errors.avgViewsFacebook && (

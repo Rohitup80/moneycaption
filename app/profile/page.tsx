@@ -18,7 +18,7 @@ type CreatorProfile = Record<string, any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RateCalculation = Record<string, any>;
 
-type AuthView = "login" | "signup" | "dashboard";
+type AuthView = "login" | "signup" | "dashboard" | "pending_approval";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -42,6 +42,55 @@ export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [savedCards, setSavedCards] = useState<any[]>([]);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [instantReviewRequested, setInstantReviewRequested] = useState(false);
+
+  const handleCopyShareLink = () => {
+    if (!profile) return;
+    const shareUrl = `${window.location.origin}/share/${profile.id}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    });
+  };
+
+  async function handleRequestInstantReview() {
+    if (!profile) return;
+    setLoading(true);
+    setError("");
+    setSuccessMsg("");
+    try {
+      const res = await fetch("/api/send-approval-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creatorName: profile.name,
+          creatorEmail: profile.email,
+          niche: profile.niche,
+          city: profile.city || "Not provided",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setInstantReviewRequested(true);
+        setSuccessMsg("Instant review requested successfully! The administrator has been notified.");
+        
+        await supabase
+          .from("creator_profiles")
+          .update({ quick_review_requested: true })
+          .eq("id", profile.id);
+        
+        setProfile((prev: any) => prev ? { ...prev, quick_review_requested: true } : null);
+      } else {
+        setError(data.error || "Failed to request instant review.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("An error occurred while requesting instant review.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // Edit form states
   const [editName, setEditName] = useState("");
@@ -87,7 +136,14 @@ export default function ProfilePage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const mode = params.get("view");
-      if (mode === "signup") {
+      const verified = params.get("verified");
+      const emailParam = params.get("email");
+
+      if (verified === "true" && emailParam) {
+        setSuccessMsg(`Email ${emailParam} verified successfully! Your profile is pending admin approval.`);
+        setView("login");
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (mode === "signup") {
         setView("signup");
       } else if (mode === "login") {
         setView("login");
@@ -108,12 +164,9 @@ export default function ProfilePage() {
       if (profileData) {
         // Enforce creator account approval check
         if (profileData.approval_status === "pending") {
-          await supabase.auth.signOut();
-          setUserId(null);
-          setProfile(null);
-          setHistory([]);
-          setView("login");
-          setError("Your account is pending verification. The admin will review it shortly.");
+          setProfile(profileData);
+          setUserId(uid);
+          setView("pending_approval");
           setLoading(false);
           return;
         } else if (profileData.approval_status === "rejected") {
@@ -131,11 +184,7 @@ export default function ProfilePage() {
         setEditName(profileData.name || "");
         setEditPhone(profileData.phone || "");
         setEditNiche(profileData.niche || "");
-        // Find matching city key from tier mapping if stored as tier
-        const matchedCity = Object.entries(cityTierMapping).find(
-          ([, tier]) => tier === profileData.city_tier
-        );
-        setEditCity(matchedCity ? matchedCity[0] : "");
+        setEditCity(profileData.city || "");
       }
 
       // Load calculation history
@@ -312,6 +361,19 @@ export default function ProfilePage() {
     setSuccessMsg("");
 
     try {
+      // 0. Prevent multi-signup on a single email ID
+      const { data: existingProfile } = await supabase
+        .from("creator_profiles")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (existingProfile) {
+        setError("An account with this email address already exists.");
+        setLoading(false);
+        return;
+      }
+
       // 1. Sign up the user in Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -344,10 +406,21 @@ export default function ProfilePage() {
         console.error("Failed to insert profile row:", profileError);
       }
 
-      setSuccessMsg("Registration successful! Please check your email to verify your account before logging in.");
+      // 3. Send simulated verification email
+      try {
+        await fetch("/api/send-verification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, name: fullName }),
+        });
+      } catch (mailErr) {
+        console.error("Verification email simulation error:", mailErr);
+      }
+
+      setSuccessMsg("Registration successful! A simulated verification link has been sent. Check your console logs.");
       setTimeout(() => {
         setView("login");
-      }, 4000);
+      }, 4500);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Registration failed.";
       setError(message);
@@ -467,6 +540,7 @@ export default function ProfilePage() {
           name: editName,
           phone: editPhone || null,
           niche: editNiche,
+          city: editCity,
           city_tier: cityTier,
           updated_at: new Date().toISOString(),
         })
@@ -547,7 +621,7 @@ export default function ProfilePage() {
 
       <main className="max-w-6xl mx-auto px-6 py-12">
         {/* ── AUTH VIEWS ── */}
-        {view !== "dashboard" && (
+        {(view === "login" || view === "signup") && (
           <div className="max-w-md mx-auto">
             {/* Header */}
             <div className="text-center mb-8">
@@ -570,7 +644,7 @@ export default function ProfilePage() {
                   setSuccessMsg("");
                 }}
                 className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  view === "login" ? "bg-[--mc-primary] text-white" : "text-[--mc-text-secondary] hover:text-white"
+                  view === "login" ? "bg-[--mc-primary] text-white" : "text-[--mc-text-secondary] hover:text-[--mc-text-primary]"
                 }`}
               >
                 Login
@@ -582,7 +656,7 @@ export default function ProfilePage() {
                   setSuccessMsg("");
                 }}
                 className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  view === "signup" ? "bg-[--mc-primary] text-white" : "text-[--mc-text-secondary] hover:text-white"
+                  view === "signup" ? "bg-[--mc-primary] text-white" : "text-[--mc-text-secondary] hover:text-[--mc-text-primary]"
                 }`}
               >
                 Sign Up
@@ -650,7 +724,7 @@ export default function ProfilePage() {
                       setError("");
                       setSuccessMsg("");
                     }}
-                    className="text-xs text-[--mc-primary-light] hover:underline"
+                    className="text-xs font-semibold text-[--mc-primary] hover:text-[--mc-primary-dark] hover:underline"
                   >
                     Create an account
                   </button>
@@ -727,7 +801,7 @@ export default function ProfilePage() {
                       <option value="">Select Niche</option>
                       {nicheOptions.map((n) => (
                         <option key={n} value={n}>
-                          {n}
+                          {n.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
                         </option>
                       ))}
                     </select>
@@ -766,13 +840,62 @@ export default function ProfilePage() {
                       setError("");
                       setSuccessMsg("");
                     }}
-                    className="text-xs text-[--mc-primary-light] hover:underline"
+                    className="text-xs font-semibold text-[--mc-primary] hover:text-[--mc-primary-dark] hover:underline"
                   >
                     Log In
                   </button>
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── PENDING VERIFICATION VIEW ── */}
+        {view === "pending_approval" && (
+          <div className="max-w-md mx-auto py-12">
+            <div className="mc-card p-8 space-y-6 text-center">
+              <div className="text-5xl animate-pulse">⏳</div>
+              <h2 className="text-2xl font-bold text-[--mc-text-primary]">Account Pending Verification</h2>
+              <p className="text-sm text-[--mc-text-secondary] leading-relaxed">
+                Hi <strong className="text-[--mc-primary]">{profile?.name}</strong>, your creator profile is currently pending administrator verification.
+              </p>
+              <p className="text-xs text-[--mc-text-muted]">
+                We verify handles and follower data for all creators to ensure baseline CPM standards. This review typically takes less than 24 hours.
+              </p>
+
+              {successMsg && (
+                <div className="glass p-4 rounded-xl text-sm text-[--mc-success] text-center">
+                  ✅ {successMsg}
+                </div>
+              )}
+              {error && (
+                <div className="mc-error-text text-sm text-center">
+                  ❌ {error}
+                </div>
+              )}
+
+              <div className="space-y-3 pt-2">
+                {profile?.quick_review_requested || instantReviewRequested ? (
+                  <div className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/10 rounded-xl py-3 px-4 text-xs font-semibold animate-pulse">
+                    🚀 Instant Review Alert Sent to Administrator!
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleRequestInstantReview}
+                    disabled={loading}
+                    className="mc-btn mc-btn-primary w-full flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {loading ? "Sending Notification..." : "⚡ Request Instant Review"}
+                  </button>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="mc-btn mc-btn-secondary w-full cursor-pointer"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -838,6 +961,7 @@ export default function ProfilePage() {
                       label="Niche"
                       value={profile?.niche ? profile.niche.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase()) : "—"}
                     />
+                    <ProfileRow label="City" value={profile?.city || "—"} />
                     <ProfileRow
                       label="Location Tier"
                       value={profile?.city_tier?.replace("_", " ").toUpperCase() || "—"}
@@ -943,7 +1067,7 @@ export default function ProfilePage() {
                       >
                         {nicheOptions.map((n) => (
                           <option key={n} value={n}>
-                            {n}
+                            {n.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
                           </option>
                         ))}
                       </select>
@@ -977,13 +1101,28 @@ export default function ProfilePage() {
               <div className="lg:col-span-2 space-y-8">
                 {/* Active Saved Rates Card */}
                 <div className="mc-card p-6 space-y-6">
-                  <div className="flex justify-between items-center border-b border-[--mc-border] pb-4">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-[--mc-border] pb-4">
                     <div>
                       <h2 className="font-semibold text-lg text-left">My Saved Rate Cards</h2>
                       <p className="text-xs text-[--mc-text-secondary] mt-1 text-left">
                         These are your saved deliverable prices verified on your profile.
                       </p>
                     </div>
+                    {profile && (
+                      <div className="flex items-center gap-2 self-start sm:self-auto relative">
+                        <button
+                          onClick={handleCopyShareLink}
+                          className="mc-btn mc-btn-primary mc-btn-sm text-xs py-1.5 px-3 flex items-center gap-1.5 shadow-sm"
+                        >
+                          🔗 Copy Share Link
+                        </button>
+                        {shareCopied && (
+                          <span className="absolute -top-9 right-0 bg-emerald-600 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg animate-fade-in whitespace-nowrap">
+                            Copied to clipboard! 📋
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {savedCards.length === 0 ? (

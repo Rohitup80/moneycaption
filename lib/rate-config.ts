@@ -56,14 +56,33 @@ export const DELIVERABLES = {
   ],
 } as const
 
-// Niche multipliers — finance/tech commands 30-50% premium over lifestyle
+// Niche multipliers — commands up to 40% premium depending on advertiser budgets
 export const NICHE_MULTIPLIERS: Record<string, { multiplier: number; label: string }> = {
-  finance_tech_b2b:        { multiplier: 1.40, label: 'Finance / Tech / B2B' },
-  health_wellness_edu:     { multiplier: 1.20, label: 'Health / Wellness / Education' },
-  beauty_fashion:          { multiplier: 1.15, label: 'Beauty / Fashion' },
-  automotive_realty:       { multiplier: 1.20, label: 'Automotive / Real Estate' },
+  finance:                 { multiplier: 1.40, label: 'Finance' },
+  investment:              { multiplier: 1.40, label: 'Investment' },
+  ai_and_software:         { multiplier: 1.35, label: 'AI and Software' },
+  coding_and_dev:          { multiplier: 1.35, label: 'Coding and Dev' },
+  tech:                    { multiplier: 1.30, label: 'Tech' },
+  real_estate:             { multiplier: 1.25, label: 'Real Estate' },
+  side_hustle:             { multiplier: 1.25, label: 'Side Hustle' },
+  education:               { multiplier: 1.20, label: 'Education' },
+  health_wellness:         { multiplier: 1.20, label: 'Health and Wellness' },
+  mental_health:           { multiplier: 1.20, label: 'Mental Health' },
+  yoga:                    { multiplier: 1.15, label: 'Yoga' },
+  diet_and_nutrition:      { multiplier: 1.15, label: 'Diet and Nutrition' },
+  skin_care:               { multiplier: 1.15, label: 'Skin Care' },
+  fashion:                 { multiplier: 1.15, label: 'Fashion' },
+  home_decor:              { multiplier: 1.10, label: 'Home Decor' },
+  photography:             { multiplier: 1.10, label: 'Photography' },
+  workout:                 { multiplier: 1.10, label: 'Workout' },
   fitness:                 { multiplier: 1.00, label: 'Fitness' },
-  food_travel:             { multiplier: 0.90, label: 'Food / Travel' },
+  automotive:              { multiplier: 1.20, label: 'Automotive' },
+  media:                   { multiplier: 1.00, label: 'Media' },
+  entertainment:           { multiplier: 0.90, label: 'Entertainment' },
+  food_travel:             { multiplier: 0.95, label: 'Food and Travel' },
+  quick_recipe:            { multiplier: 0.90, label: 'Quick Recipe' },
+  gaming:                  { multiplier: 0.90, label: 'Gaming' },
+  pop_culture:             { multiplier: 0.85, label: 'Pop Culture' },
   lifestyle_comedy_general:{ multiplier: 0.80, label: 'Lifestyle / Comedy / General' },
 }
 
