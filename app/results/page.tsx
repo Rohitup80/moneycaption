@@ -84,6 +84,65 @@ export default function ResultsPage() {
   const [isFetchingPosts, setIsFetchingPosts] = useState(false);
   const [postsFetched, setPostsFetched] = useState(false);
 
+  // Gating states for pending reviews
+  const [isPendingApproval, setIsPendingApproval] = useState(false);
+  const [approvalRequestSent, setApprovalRequestSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
+
+  useEffect(() => {
+    async function checkCreatorApproval() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: pData } = await supabase
+          .from("creator_profiles")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .single();
+        if (pData) {
+          setProfile(pData);
+          if (pData.approval_status === "pending") {
+            setIsPendingApproval(true);
+            if (pData.quick_review_requested) {
+              setApprovalRequestSent(true);
+            }
+          }
+        }
+      }
+    }
+    checkCreatorApproval();
+  }, []);
+
+  const handleRequestApproval = async () => {
+    if (!profile) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/send-approval-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creatorName: profile.name,
+          creatorEmail: profile.email,
+          niche: profile.niche,
+          city: profile.city || "Not set",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setApprovalRequestSent(true);
+        await supabase
+          .from("creator_profiles")
+          .update({ quick_review_requested: true })
+          .eq("id", profile.id);
+        setProfile((prev: any) => prev ? { ...prev, quick_review_requested: true } : null);
+      }
+    } catch (err) {
+      console.error("Failed to request approval alert:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Preload PDF generator component
     import("@/lib/pdf-generator").then((mod) => {
@@ -241,10 +300,26 @@ export default function ResultsPage() {
       }
 
       if (profileId) {
+        // Purge old active saved rate card deliverables to prevent duplicates
+        await supabase.from("rate_cards").delete().eq("creator_id", profileId);
         const rows = flattenForDatabase(profileId, resultsWithSelections);
-        supabase.from("rate_cards").upsert(rows).then(({ error }) => {
-          if (error) console.error("Database save error:", error);
-        });
+        const { error: insErr } = await supabase.from("rate_cards").insert(rows);
+        if (insErr) console.error("Database save error:", insErr);
+
+        // Update creator statistics: downloads_count
+        try {
+          const { data: prof } = await supabase
+            .from("creator_profiles")
+            .select("downloads_count")
+            .eq("id", profileId)
+            .single();
+          await supabase
+            .from("creator_profiles")
+            .update({ downloads_count: (prof?.downloads_count || 0) + 1 })
+            .eq("id", profileId);
+        } catch (statsErr) {
+          console.error("Failed to update download count stats:", statsErr);
+        }
       }
     } catch (error) {
       console.error("PDF generation error:", error);
@@ -507,6 +582,32 @@ export default function ResultsPage() {
           })}
         </div>
 
+        {/* Gated Review Warning */}
+        {isPendingApproval && (
+          <div className="w-full max-w-2xl bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 text-center space-y-4 animate-fade-in">
+            <span className="text-3xl block animate-pulse">⚠️</span>
+            <h4 className="font-bold text-amber-700 text-base">Account Pending Verification</h4>
+            <p className="text-xs text-amber-600 leading-relaxed max-w-md mx-auto">
+              Your rate card has been calculated successfully, but generated PDF downloads and dashboard integrations are locked until the administrator approves your profile.
+            </p>
+            <div className="flex justify-center pt-1">
+              {approvalRequestSent ? (
+                <div className="bg-emerald-500/15 text-emerald-600 border border-emerald-500/10 rounded-xl py-2 px-4 text-xs font-semibold animate-pulse">
+                  🚀 Instant Account Approval Request Sent to Admin!
+                </div>
+              ) : (
+                <button
+                  onClick={handleRequestApproval}
+                  disabled={loading}
+                  className="mc-btn mc-btn-primary mc-btn-sm text-xs cursor-pointer bg-gradient-to-r from-amber-500 to-amber-600 border-none hover:from-amber-600 hover:to-amber-700 shadow-md text-white font-bold"
+                >
+                  {loading ? "Sending Alert..." : "⚡ Request Instant Account Approval"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex flex-col items-center gap-6 mt-10 animate-fade-in-up opacity-0 delay-300">
           <div className="flex flex-col sm:flex-row gap-4 justify-center w-full max-w-2xl">
@@ -514,14 +615,14 @@ export default function ResultsPage() {
               <>
                 <button
                   onClick={() => handleDownloadPdf(false)}
-                  disabled={isGeneratingPdf}
+                  disabled={isGeneratingPdf || isPendingApproval}
                   className="mc-btn mc-btn-secondary mc-btn-lg flex-1 cursor-pointer"
                 >
                   📄 Download PDF (Standard)
                 </button>
                 <button
                   onClick={() => handleDownloadPdf(true)}
-                  disabled={isGeneratingPdf}
+                  disabled={isGeneratingPdf || isPendingApproval}
                   className="mc-btn mc-btn-primary mc-btn-lg flex-1 cursor-pointer bg-gradient-to-r from-[#6C5CE7] to-[#00D2D3] border-none text-white font-semibold shadow-md"
                 >
                   📊 Download PDF (With Metrics)
@@ -532,15 +633,19 @@ export default function ResultsPage() {
                 <button
                   id="download-pdf"
                   onClick={() => handleDownloadPdf(false)}
-                  disabled={isGeneratingPdf}
+                  disabled={isGeneratingPdf || isPendingApproval}
                   className="mc-btn mc-btn-primary mc-btn-lg flex-1 cursor-pointer"
                 >
-                  {isGeneratingPdf ? "Generating PDF..." : "📄 Download Rate Card PDF"}
+                  {isGeneratingPdf
+                    ? "Generating PDF..."
+                    : isPendingApproval
+                    ? "📄 Download PDF (Requires Approval)"
+                    : "📄 Download Rate Card PDF"}
                 </button>
                 {(calcData?.handleInstagram || calcData?.handleYoutube || calcData?.handleFacebook) && (
                   <button
                     onClick={handleFetchRecentPosts}
-                    disabled={isFetchingPosts}
+                    disabled={isFetchingPosts || isPendingApproval}
                     className="mc-btn mc-btn-secondary mc-btn-lg flex-1 cursor-pointer flex items-center justify-center gap-2"
                   >
                     {isFetchingPosts ? (

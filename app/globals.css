@@ -2,25 +2,26 @@
 
 /* ─── Design Tokens ─── */
 :root {
-  /* Brand palette (Premium Creator psychology: Indigo, Violet, and Cyber Teal) */
-  --mc-primary: #6366F1;         /* Electric Indigo */
-  --mc-primary-light: #818CF8;   /* Indigo Highlight */
-  --mc-primary-dark: #4F46E5;    /* Deep Royal Violet */
-  --mc-accent: #06B6D4;          /* Cyber Cyan/Teal */
-  --mc-accent-dark: #0891B2;
+  /* Brand palette (Soothing Premium Creator theme: Calming Violet, Lavender, and soft Mint) */
+  --mc-primary: #6C5CE7;         /* Calming Slate Violet */
+  --mc-primary-light: #8E7FFA;   /* Lavender Highlight */
+  --mc-primary-dark: #5849C4;    /* Deep Royal Violet */
+  --mc-accent: #10B981;          /* Calming Emerald Mint */
+  --mc-accent-dark: #059669;
 
-  /* Neutrals (lite mode theme with rich slate/grey contrast depths) */
-  --mc-bg-primary: #EEF2F6;      /* Soft light blue-grey background */
-  --mc-bg-secondary: #F1F5F9;    /* Container base backgrounds */
-  --mc-bg-card: #FFFFFF;         /* Pure white container cards for visual contrast */
-  --mc-bg-elevated: #E2E8F0;     /* Elevated input, button, and active tab backdrops */
+  /* Neutrals (extremely soothing, soft, warm cream/lilac palette) */
+  --mc-bg-primary: #FAF9FC;      /* Calming luxury white/lavender background */
+  --mc-bg-secondary: #F3F1F7;    /* Soft lavender-grey backdrop base */
+  --mc-bg-card: #FFFFFF;         /* Crisp white container cards */
+  --mc-bg-elevated: #E5E1EE;     /* Elevated inputs, buttons, and inactive tab backdrops */
 
-  --mc-text-primary: #0F172A;    /* Primary text (Slate 900) */
-  --mc-text-secondary: #334155;  /* Secondary text (Slate 700) */
-  --mc-text-muted: #64748B;      /* Muted helper text (Slate 500) */
+  /* Text (Softer than stark black, high contrast rich slate/eggplant) */
+  --mc-text-primary: #1F1D2C;    /* Rich slate/eggplant text */
+  --mc-text-secondary: #4A465C;  /* Secondary body slate */
+  --mc-text-muted: #7E7991;      /* Muted lavender-grey helpers */
 
-  --mc-border: rgba(148, 163, 184, 0.18);       /* Clean outlines */
-  --mc-border-hover: rgba(148, 163, 184, 0.35);  /* Hovered states */
+  --mc-border: rgba(108, 92, 231, 0.12);       /* Calming violet-tinted borders */
+  --mc-border-hover: rgba(108, 92, 231, 0.28);  /* Hovered states */
 
   /* Status */
   --mc-success: #10B981;

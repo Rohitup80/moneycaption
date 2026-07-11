@@ -5,7 +5,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
-import { cityOptions, cityTierMapping, nicheOptions } from "@/lib/rate-config";
+import { cityOptions, cityTierMapping, nicheOptions, NICHE_MULTIPLIERS } from "@/lib/rate-config";
 import { createClient } from "@supabase/supabase-js";
 import type { FetchResult } from "@/lib/social-fetch";
 import { calculateRates } from "@/lib/rate-engine";
@@ -423,7 +423,7 @@ export default function CalculatorForm() {
       // Save to calculations history if logged in
       if (session?.user?.id) {
         try {
-          await supabase.from("rate_calculations").insert({
+          const { error: historyErr } = await supabase.from("rate_calculations").insert({
             user_id: session.user.id,
             creator_name: data.name,
             niche: data.niche,
@@ -450,6 +450,9 @@ export default function CalculatorForm() {
             avg_views_facebook: data.avgViewsFacebook || null,
             results_json: computedRates,
           });
+          if (historyErr) {
+            console.error("Database error saving rate calculation history:", historyErr);
+          }
         } catch (historyErr) {
           console.error("Failed to save history:", historyErr);
         }
@@ -597,9 +600,14 @@ export default function CalculatorForm() {
             <input
               id="phone"
               type="tel"
-              placeholder="+91 98765 43210"
-              className="mc-input"
-              {...register("phone")}
+              placeholder="e.g. 9876543210 (10 digits)"
+              className={`mc-input ${errors.phone ? "mc-input-error" : ""}`}
+              maxLength={10}
+              {...register("phone", {
+                onChange: (e) => {
+                  e.target.value = e.target.value.replace(/\D/g, "");
+                }
+              })}
             />
             {errors.phone && (
               <p className="mc-error-text mt-1">{errors.phone.message}</p>
@@ -773,13 +781,20 @@ export default function CalculatorForm() {
                               type="number"
                               min={1000}
                               placeholder="e.g. 25000 (minimum 1,000)"
-                              className="mc-input"
+                              className={`mc-input ${errors[`followers_${platform.value}` as keyof FormValues] ? "mc-input-error" : ""}`}
                               {...register(
                                 `followers_${platform.value}` as
                                   | "followers_instagram"
                                   | "followers_youtube"
                                   | "followers_facebook",
-                                { valueAsNumber: true }
+                                {
+                                  valueAsNumber: true,
+                                  onChange: (e) => {
+                                    if (e.target.value && parseFloat(e.target.value) < 0) {
+                                      e.target.value = "0";
+                                    }
+                                  }
+                                }
                               )}
                             />
                             {errors[`followers_${platform.value}` as keyof FormValues] && (
@@ -859,7 +874,7 @@ export default function CalculatorForm() {
                           color: isSelected ? "var(--mc-text-primary)" : "var(--mc-text-secondary)",
                         }}
                       >
-                        {niche.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                        {NICHE_MULTIPLIERS[niche]?.label || niche}
                       </span>
                       {isSelected && (
                         <span className="ml-auto text-xs font-semibold text-[--mc-primary-light]">
