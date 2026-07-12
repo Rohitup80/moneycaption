@@ -22,11 +22,12 @@ Use this map to locate screens, components, and layout files:
 
 | File Path | Description | Key Customization Notes |
 | :--- | :--- | :--- |
-| [app/page.tsx](file:///d:/moneycaption/app/page.tsx) | Homepage Landing Page | Hero sections, testimonials, and verified badges overview. |
+| [app/page.tsx](file:///d:/moneycaption/app/page.tsx) | Homepage Landing Page | Hero sections, testimonials, and ambient gradient worth calculator link. |
+| [app/worth-calculator/page.tsx](file:///d:/moneycaption/app/worth-calculator/page.tsx) | Sponsorship Worth Calculator | Dynamic CPM sliders, social handles auto-scraper search inputs, magic auth popups, and copy shared link CTAs. |
 | [app/calculate/page.tsx](file:///d:/moneycaption/app/calculate/page.tsx) | Rate Calculator Router | Wraps the multi-step calculator form component. |
-| [app/calculate/CalculatorForm.tsx](file:///d:/moneycaption/app/calculate/CalculatorForm.tsx) | Multi-Step Calculator Form | Handles validation (Zod & React Hook Form), API blur checks, and platforms/niche options grids. |
-| [app/results/page.tsx](file:///d:/moneycaption/app/results/page.tsx) | Results & PDF View | Renders deliverables pricing grids, custom edit states, clipboard shares, and PDF generator wrappers. |
-| [app/profile/page.tsx](file:///d:/moneycaption/app/profile/page.tsx) | Creator Dashboard Portal | Credentials portal, login/signup forms, local verification resenders, password resets, verification triggers, and history calculation lists. |
+| [app/calculate/CalculatorForm.tsx](file:///d:/moneycaption/app/calculate/CalculatorForm.tsx) | Multi-Step Calculator Form | Handles validation (Zod & React Hook Form), API blur checks, platforms/niche options, and real engagement scraper with simulated 17-second countdown. |
+| [app/results/page.tsx](file:///d:/moneycaption/app/results/page.tsx) | Results & PDF View | Renders pricing grids, custom edit states, clipboard shares, **Engagement Performance Hub (averages + last 10 posts)**, and PDF generator wrappers. |
+| [app/profile/page.tsx](file:///d:/moneycaption/app/profile/page.tsx) | Creator Dashboard Portal | Credentials portal, login/signup forms, local verification, verification badge triggers, history calculations, and **📊 Engagement Performance Center** tabs. |
 | [app/share/\[id\]/page.tsx](file:///d:/moneycaption/app/share/%5Bid%5D/page.tsx) | Creator Shareable Portfolio | Client-facing public rate card pages (reads active saved deliverables from `rate_cards`). |
 | [app/admin/review/page.tsx](file:///d:/moneycaption/app/admin/review/page.tsx) | Admin Panel & Stats | Passcode entry screen, metrics counters dashboard, screenshot review cards, and creator inspection drawers. |
 | [components/Navbar.tsx](file:///d:/moneycaption/components/Navbar.tsx) | Navbar Navigation Menu | Mobile hamburger toggler menu overlay and header branding. |
@@ -60,10 +61,12 @@ All calculations are executed server-side to prevent tampering. Customizations t
 
 *   **File Path:** [lib/pdf-generator.ts](file:///d:/moneycaption/lib/pdf-generator.ts)
 *   **Technologies:** Built on top of `@react-pdf/renderer` (server/client dynamic rendering).
-*   **Layout Specifications:** Draws a professional, single-page landscape layout including:
+*   **Layout Specifications:** Draws a professional landscape layout including:
     *   Top left creator header and content niche.
-    *   Top right verification tier badge (Self-Reported, Screenshot Verified, or API Verified).
+    *   Top right verification tier badge.
     *   Social metrics display boxes (Instagram, YouTube, and Facebook follower counts).
+    *   **Average Metrics Summary Cards:** Engagement Rate, Avg. Likes, Comments, Shares, and Reel/Post Views.
+    *   **Recent Posts Feed Log:** Displays titles, dates, views, and engagement percentages of the **last 10 post entries**.
     *   Core pricing tables listing deliverable item name, custom pricing tags (if creator edited), and prices.
     *   MoneyCaption footer branding signature.
 
@@ -151,5 +154,9 @@ When writing code or modifications for this project, adhere strictly to these pr
     *   Always apply the unique-fallback filter (`!acc[platform].some(item => item.deliverable_type === card.deliverable_type)`) in list reducers to protect views from duplicate data.
 2.  **Pending Approvals:**
     *   Pending reviews can log in and edit profile details, but cannot download PDFs or share links.
-3.  **Compilation & Builds:**
+3.  **Contrast & Theme Guidelines:**
+    *   **Avoid invisible white text:** On light theme pages, do not assign the raw `text-white` class for labels, locker details, or header titles. Instead, always use `text-[--mc-text-primary]` or standard dark text colors. Keep `text-white` solely for text resting on solid dark button gradients.
+4.  **Mobile Webview Copy Sharing:**
+    *   Due to sandbox permission limits on iOS Safari and social in-app browsers, never call raw `navigator.clipboard.writeText(...)` without checking for a textarea focus select clipboard fallback copier to ensure share URLs copy reliably on all devices.
+5.  **Compilation & Builds:**
     *   Always verify TypeScript compatibility by running `npm run build` after editing component configurations.
