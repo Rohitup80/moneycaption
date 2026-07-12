@@ -65,6 +65,35 @@ export default function WorthCalculatorPage() {
     setMaxWorth(calculatedMax);
   }, [platform, followers, views, er]);
 
+  const fallbackCopy = (text: string) => {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.opacity = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand("copy");
+    } catch (err) {
+      console.error("Fallback copy failed:", err);
+    }
+    document.body.removeChild(textArea);
+  };
+
+  const copyToClipboard = (text: string) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch((err) => {
+        console.warn("navigator.clipboard.writeText failed, using fallback:", err);
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
+  };
+
   // Scraper action handler
   const handleScrapMetrics = async () => {
     if (!scraperHandle) {
@@ -233,7 +262,7 @@ export default function WorthCalculatorPage() {
       if (cardInsErr) throw cardInsErr;
 
       const shareUrl = `${window.location.origin}/share/${profileId}`;
-      navigator.clipboard.writeText(shareUrl);
+      copyToClipboard(shareUrl);
       setShareLinkText(shareUrl);
       setShowAuthPopup(false);
 
@@ -554,7 +583,7 @@ export default function WorthCalculatorPage() {
       {/* ── Magic Auth Popup Modal ── */}
       {showAuthPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="mc-card max-w-md w-full bg-white p-8 relative space-y-6 shadow-2xl border border-[--mc-border]">
+          <div className="mc-card max-w-md w-full bg-white p-5 sm:p-8 relative space-y-5 sm:space-y-6 shadow-2xl border border-[--mc-border] max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowAuthPopup(false)}
               className="absolute top-4 right-4 text-2xl text-[--mc-text-secondary] hover:text-[--mc-text-primary] cursor-pointer"
