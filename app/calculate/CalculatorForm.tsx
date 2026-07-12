@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cityOptions, cityTierMapping, nicheOptions, NICHE_MULTIPLIERS } from "@/lib/rate-config";
 import { createClient } from "@supabase/supabase-js";
 import type { FetchResult } from "@/lib/social-fetch";
@@ -86,9 +86,14 @@ const TOTAL_STEPS = 5;
 
 export default function CalculatorForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReturningUser, setIsReturningUser] = useState(false);
+  const [isFetchingEngagement, setIsFetchingEngagement] = useState(false);
+  const [engagementFetchSuccess, setEngagementFetchSuccess] = useState<string | null>(null);
+  const [engagementFetchError, setEngagementFetchError] = useState<string | null>(null);
   const [existingProfileId, setExistingProfileId] = useState<string | null>(null);
   const [fetchStatuses, setFetchStatuses] = useState<Record<string, FetchStatus>>({});
   // Track highest verification tier across all platforms
@@ -131,6 +136,135 @@ export default function CalculatorForm() {
 
   const selectedPlatforms = watch("platforms") || [];
 
+  // ── Pre-fill query parameters on mount ──
+  useEffect(() => {
+    const followersParam = searchParams.get("followers");
+    const viewsParam = searchParams.get("views");
+    const erParam = searchParams.get("er");
+    const platformParam = searchParams.get("platform");
+
+    if (followersParam || viewsParam || erParam || platformParam) {
+      if (platformParam === "instagram" || platformParam === "youtube" || platformParam === "facebook") {
+        setValue("platforms", [platformParam]);
+        const followersVal = parseInt(followersParam || "0", 10);
+        if (followersVal > 0) {
+          const fField = `followers_${platformParam}` as "followers_instagram" | "followers_youtube" | "followers_facebook";
+          setValue(fField, followersVal, { shouldValidate: true, shouldDirty: true });
+        }
+        const viewsVal = parseInt(viewsParam || "0", 10);
+        if (viewsVal > 0) {
+          if (platformParam === "instagram") setValue("avgViewsInstagram", viewsVal, { shouldValidate: true, shouldDirty: true });
+          if (platformParam === "youtube") setValue("avgViewsYoutube", viewsVal, { shouldValidate: true, shouldDirty: true });
+          if (platformParam === "facebook") setValue("avgViewsFacebook", viewsVal, { shouldValidate: true, shouldDirty: true });
+        }
+      }
+      if (erParam) {
+        setValue("engagement_rate", parseFloat(erParam));
+      }
+    }
+  }, [searchParams, setValue]);
+
+  // ── Auto-Fetch Engagement & Average Views (15-20 Seconds simulated delay) ──
+  const handleFetchEngagementMetrics = async () => {
+    setIsFetchingEngagement(true);
+    setEngagementFetchError(null);
+    setEngagementFetchSuccess(null);
+
+    // 17-second simulation delay
+    const delayPromise = new Promise((resolve) => setTimeout(resolve, 17000));
+
+    try {
+      const platforms = watch("platforms") || [];
+      const igHandle = watch("handle_instagram");
+      const ytHandle = watch("handle_youtube");
+      const fbHandle = watch("handle_facebook");
+
+      let fetchedER: number | null = null;
+      const fetchedViews: Record<string, number | null> = {};
+      let postsList: any[] = [];
+
+      for (const p of platforms) {
+        const handle = p === "instagram" ? igHandle : p === "youtube" ? ytHandle : fbHandle;
+        if (handle) {
+          const cleanHandle = handle.replace(/^@/, "").trim();
+          
+          // 1. Fetch Profile for ER
+          const profileResponse = await fetch("/api/fetch-profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ platform: p, handle: cleanHandle }),
+          });
+           const profileResult = await profileResponse.json();
+           if (profileResult.success && profileResult.data) {
+             const d = profileResult.data;
+             if (d.engagementRate) {
+               fetchedER = d.engagementRate;
+             }
+             if (d.profilePicUrl) {
+               setProfilePics((prev) => ({ ...prev, [p]: d.profilePicUrl }));
+             }
+             setFollowingCounts((prev) => ({ ...prev, [p]: d.following || null }));
+             setPostsCounts((prev) => ({ ...prev, [p]: d.posts || null }));
+             
+             setAutoVerificationTier("api_verified");
+             setAutoDataSource(d.dataSourceProvider || "scrapecreators");
+           }
+
+          // 2. Fetch Posts for Avg Views
+          const postsResponse = await fetch("/api/fetch-posts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ platform: p, handle: cleanHandle }),
+          });
+          const postsResult = await postsResponse.json();
+          if (postsResult.success && postsResult.posts && postsResult.posts.length > 0) {
+            const validPosts = postsResult.posts.filter((post: any) => post.views !== null);
+            if (validPosts.length > 0) {
+              const avgViews = Math.round(
+                validPosts.reduce((sum: number, post: any) => sum + post.views, 0) / validPosts.length
+              );
+              fetchedViews[p] = avgViews;
+            }
+            postsList = [...postsList, ...postsResult.posts];
+          }
+        }
+      }
+
+      // Await simulation countdown
+      await delayPromise;
+
+      if (fetchedER !== null) {
+        setValue("engagement_rate", parseFloat(fetchedER.toFixed(2)));
+      }
+      if (fetchedViews.instagram) {
+        setValue("avgViewsInstagram", fetchedViews.instagram);
+      }
+      if (fetchedViews.youtube) {
+        setValue("avgViewsYoutube", fetchedViews.youtube);
+      }
+      if (fetchedViews.facebook) {
+        setValue("avgViewsFacebook", fetchedViews.facebook);
+      }
+
+      if (postsList.length > 0) {
+        sessionStorage.setItem("mc_fetched_posts", JSON.stringify(postsList));
+      }
+
+      setEngagementFetchSuccess("Engagement and average views auto-fetched successfully!");
+      
+      // Auto transition to step 5 review
+      setTimeout(() => {
+        setCurrentStep(5);
+      }, 1200);
+
+    } catch (err) {
+      console.error(err);
+      setEngagementFetchError("Failed to auto-fetch. Please verify handle names or input manually.");
+    } finally {
+      setIsFetchingEngagement(false);
+    }
+  };
+
   // ── Auto-fetch handler (B2) ──
   const handleAutoFetch = useCallback(
     async (platform: "instagram" | "youtube" | "facebook", handle: string) => {
@@ -156,14 +290,13 @@ export default function CalculatorForm() {
           const d = result.data;
           // Auto-fill follower count
           const followerField = `followers_${platform}` as "followers_instagram" | "followers_youtube" | "followers_facebook";
-          setValue(followerField, d.followers);
+          setValue(followerField, d.followers, { shouldValidate: true, shouldDirty: true });
 
           // Auto-fill engagement if calculated
           if (d.engagementRate && d.engagementRate > 0) {
-            // Only set if no engagement rate is already entered
             const currentER = watch("engagement_rate");
             if (!currentER) {
-              setValue("engagement_rate", d.engagementRate);
+              setValue("engagement_rate", d.engagementRate, { shouldValidate: true, shouldDirty: true });
             }
           }
 
@@ -907,6 +1040,38 @@ export default function CalculatorForm() {
               Don&apos;t know it? Skip this — we&apos;ll calculate it for you
               within 24–48 hours.
             </p>
+
+            {/* Auto-Fetch button & loading overlay */}
+            <div className="mt-4">
+              {isFetchingEngagement ? (
+                <div className="bg-[--mc-bg-secondary] border border-[--mc-border] p-6 rounded-xl text-center space-y-3">
+                  <div className="flex justify-center">
+                    <svg className="animate-spin h-8 w-8 text-[--mc-primary]" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-semibold text-[--mc-text-primary]">Analyzing social handles and posts...</p>
+                  <p className="text-xs text-[--mc-text-secondary] animate-pulse">Calculating real engagement rate & average views (Takes 15-20 seconds)</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleFetchEngagementMetrics}
+                    className="mc-btn mc-btn-secondary w-full py-3 bg-slate-900 border-indigo-500/30 text-indigo-400 hover:bg-slate-800/80 cursor-pointer flex items-center justify-center gap-2 font-bold transition-all shadow-md"
+                  >
+                    ⚡ Auto-Fetch Real Engagement & Average Views
+                  </button>
+                  {engagementFetchSuccess && (
+                    <p className="text-xs text-[--mc-success] font-medium text-center">✓ {engagementFetchSuccess}</p>
+                  )}
+                  {engagementFetchError && (
+                    <p className="text-xs text-[--mc-warning] font-medium text-center">⚠ {engagementFetchError}</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div>

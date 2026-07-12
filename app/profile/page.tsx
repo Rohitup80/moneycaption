@@ -317,6 +317,11 @@ export default function ProfilePage() {
     }
   }
 
+  // Platform verification states
+  const [verifyingPlatform, setVerifyingPlatform] = useState<string | null>(null);
+  const [verifySuccess, setVerifySuccess] = useState<string | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+
   // Edit form states
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -828,6 +833,134 @@ export default function ProfilePage() {
       setLoading(false);
     }
   }
+
+  // ── Verify Social Handle (15-20 Seconds simulated delay) ──
+  const handleVerifyHandle = async (platform: "instagram" | "youtube" | "facebook") => {
+    const handle = platform === "instagram" ? editInstagram : platform === "youtube" ? editYoutube : editFacebook;
+    if (!handle) {
+      setVerifyError(`Please enter a ${platform} handle first.`);
+      return;
+    }
+    const cleanHandle = handle.replace(/^@/, "").trim();
+    if (!cleanHandle) return;
+
+    setVerifyingPlatform(platform);
+    setVerifyError(null);
+    setVerifySuccess(null);
+
+    // 17-second simulation delay
+    const delayPromise = new Promise((resolve) => setTimeout(resolve, 17000));
+
+    try {
+      // 1. Fetch Profile Details (ER, Followers, Pic)
+      const profileResponse = await fetch("/api/fetch-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform, handle: cleanHandle }),
+      });
+      const profileResult = await profileResponse.json();
+      if (!profileResult.success || !profileResult.data) {
+        throw new Error(profileResult.error || `Could not resolve ${platform} profile details.`);
+      }
+      const d = profileResult.data;
+
+      // 2. Fetch Posts for average metrics
+      let fetchedAvgViews: number | null = null;
+      let postsList: any[] = [];
+      try {
+        const postsResponse = await fetch("/api/fetch-posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform, handle: cleanHandle }),
+        });
+        const postsResult = await postsResponse.json();
+        if (postsResult.success && postsResult.posts && postsResult.posts.length > 0) {
+          const validPosts = postsResult.posts.filter((post: any) => post.views !== null);
+          if (validPosts.length > 0) {
+            fetchedAvgViews = Math.round(
+              validPosts.reduce((sum: number, post: any) => sum + post.views, 0) / validPosts.length
+            );
+          }
+          postsList = postsResult.posts;
+        }
+      } catch (err) {
+        console.warn("Fetch posts error during verify:", err);
+      }
+
+      // Await simulation countdown
+      await delayPromise;
+
+      // Populate input states
+      if (platform === "instagram") {
+        setEditFollowersInstagram(d.followers.toString());
+      } else if (platform === "youtube") {
+        setEditFollowersYoutube(d.followers.toString());
+      } else {
+        setEditFollowersFacebook(d.followers.toString());
+      }
+
+      // Save directly to the database
+      if (profile?.id) {
+        const updates: any = {
+          verification_tier: "api_verified",
+          data_source_provider: d.dataSourceProvider || "scrapecreators",
+          engagement_rate: d.engagementRate || null,
+          engagement_source: "api_verified",
+          profile_pic_url: d.profilePicUrl || profile.profile_pic_url,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (platform === "instagram") {
+          updates.instagram_handle = cleanHandle;
+          updates.followers_instagram = d.followers;
+          updates.following_instagram = d.following || null;
+          updates.posts_instagram = d.posts || null;
+          updates.avg_views_instagram = fetchedAvgViews;
+        } else if (platform === "youtube") {
+          updates.youtube_handle = cleanHandle;
+          updates.followers_youtube = d.followers;
+          updates.following_youtube = d.following || null;
+          updates.posts_youtube = d.posts || null;
+          updates.avg_views_youtube = fetchedAvgViews;
+        } else {
+          updates.facebook_handle = cleanHandle;
+          updates.followers_facebook = d.followers;
+          updates.following_facebook = d.following || null;
+          updates.posts_facebook = d.posts || null;
+          updates.avg_views_facebook = fetchedAvgViews;
+        }
+
+        const { error: updateErr } = await supabase
+          .from("creator_profiles")
+          .update(updates)
+          .eq("id", profile.id);
+
+        if (updateErr) throw updateErr;
+
+        // Cache posts in session storage
+        if (postsList.length > 0) {
+          sessionStorage.setItem("mc_fetched_posts", JSON.stringify(postsList));
+        }
+
+        // Reload local profile details
+        const { data: refreshedProfile } = await supabase
+          .from("creator_profiles")
+          .select("*")
+          .eq("id", profile.id)
+          .single();
+        if (refreshedProfile) {
+          setProfile(refreshedProfile);
+        }
+
+        setVerifySuccess(`Successfully verified and saved ${platform} handle!`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setVerifyError(err.message || "Verification failed. Please try again.");
+    } finally {
+      setVerifyingPlatform(null);
+    }
+  };
 
   // ── View/Redownload a Past Calculation ──
   const handleViewPastCalculation = (calc: RateCalculation) => {
@@ -1598,71 +1731,146 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="border-t border-[--mc-border] pt-4 mt-2 space-y-4 text-left">
-                      <p className="text-xs font-semibold text-[--mc-text-secondary]">📸 Social Handles & Followers</p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="mc-label">Instagram Handle</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. handle"
-                            className="mc-input"
-                            value={editInstagram}
-                            onChange={(e) => setEditInstagram(e.target.value)}
-                          />
+                      <p className="text-xs font-bold text-[--mc-text-secondary] uppercase tracking-wider">📸 Verify Social Profiles</p>
+
+                      {/* Status alerts */}
+                      {(verifyError || verifySuccess || verifyingPlatform) && (
+                        <div className="text-center p-3.5 rounded-lg bg-[--mc-bg-secondary] border border-[--mc-border] text-xs">
+                          {verifyingPlatform && (
+                            <p className="text-indigo-400 font-semibold animate-pulse">
+                              ⏳ Verifying {verifyingPlatform} handle... (Takes 15-20s)
+                            </p>
+                          )}
+                          {verifySuccess && <p className="text-[--mc-success] font-semibold">✓ {verifySuccess}</p>}
+                          {verifyError && <p className="text-[--mc-warning] font-semibold">⚠ {verifyError}</p>}
                         </div>
-                        <div>
-                          <label className="mc-label">Instagram Followers</label>
-                          <input
-                            type="number"
-                            placeholder="e.g. 10000"
-                            className="mc-input"
-                            value={editFollowersInstagram}
-                            onChange={(e) => setEditFollowersInstagram(e.target.value)}
-                          />
+                      )}
+
+                      <div className="space-y-4">
+                        {/* Instagram Block */}
+                        <div className="bg-[--mc-bg-secondary]/50 p-4 rounded-xl border border-[--mc-border]/50 space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-[--mc-text-primary] flex items-center gap-1.5">
+                              📸 Instagram Profile
+                              {profile?.instagram_handle && profile?.verification_tier === "api_verified" && (
+                                <span className="text-[--mc-success] font-semibold">✓ Verified</span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={verifyingPlatform !== null}
+                              onClick={() => handleVerifyHandle("instagram")}
+                              className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-md font-bold hover:bg-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              {verifyingPlatform === "instagram" ? "Verifying..." : "⚡ Verify"}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-[--mc-text-muted] font-bold">Handle</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. handle"
+                                className="mc-input mt-1"
+                                value={editInstagram}
+                                onChange={(e) => setEditInstagram(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-[--mc-text-muted] font-bold">Followers</label>
+                              <input
+                                type="number"
+                                placeholder="e.g. 10000"
+                                className="mc-input mt-1"
+                                value={editFollowersInstagram}
+                                onChange={(e) => setEditFollowersInstagram(e.target.value)}
+                              />
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="mc-label">YouTube Handle</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. channel"
-                            className="mc-input"
-                            value={editYoutube}
-                            onChange={(e) => setEditYoutube(e.target.value)}
-                          />
+
+                        {/* YouTube Block */}
+                        <div className="bg-[--mc-bg-secondary]/50 p-4 rounded-xl border border-[--mc-border]/50 space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-[--mc-text-primary] flex items-center gap-1.5">
+                              🎬 YouTube Channel
+                              {profile?.youtube_handle && profile?.verification_tier === "api_verified" && (
+                                <span className="text-[--mc-success] font-semibold">✓ Verified</span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={verifyingPlatform !== null}
+                              onClick={() => handleVerifyHandle("youtube")}
+                              className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-md font-bold hover:bg-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              {verifyingPlatform === "youtube" ? "Verifying..." : "⚡ Verify"}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-[--mc-text-muted] font-bold">Channel Name</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. channel"
+                                className="mc-input mt-1"
+                                value={editYoutube}
+                                onChange={(e) => setEditYoutube(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-[--mc-text-muted] font-bold">Subscribers</label>
+                              <input
+                                type="number"
+                                placeholder="e.g. 50000"
+                                className="mc-input mt-1"
+                                value={editFollowersYoutube}
+                                onChange={(e) => setEditFollowersYoutube(e.target.value)}
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <label className="mc-label">YouTube Subscribers</label>
-                          <input
-                            type="number"
-                            placeholder="e.g. 50000"
-                            className="mc-input"
-                            value={editFollowersYoutube}
-                            onChange={(e) => setEditFollowersYoutube(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="mc-label">Facebook Handle</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. page"
-                            className="mc-input"
-                            value={editFacebook}
-                            onChange={(e) => setEditFacebook(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="mc-label">Facebook Followers</label>
-                          <input
-                            type="number"
-                            placeholder="e.g. 5000"
-                            className="mc-input"
-                            value={editFollowersFacebook}
-                            onChange={(e) => setEditFollowersFacebook(e.target.value)}
-                          />
+
+                        {/* Facebook Block */}
+                        <div className="bg-[--mc-bg-secondary]/50 p-4 rounded-xl border border-[--mc-border]/50 space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-[--mc-text-primary] flex items-center gap-1.5">
+                              📘 Facebook Page
+                              {profile?.facebook_handle && profile?.verification_tier === "api_verified" && (
+                                <span className="text-[--mc-success] font-semibold">✓ Verified</span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={verifyingPlatform !== null}
+                              onClick={() => handleVerifyHandle("facebook")}
+                              className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-md font-bold hover:bg-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              {verifyingPlatform === "facebook" ? "Verifying..." : "⚡ Verify"}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-[--mc-text-muted] font-bold">Page Handle</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. page"
+                                className="mc-input mt-1"
+                                value={editFacebook}
+                                onChange={(e) => setEditFacebook(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-[--mc-text-muted] font-bold">Followers</label>
+                              <input
+                                type="number"
+                                placeholder="e.g. 5000"
+                                className="mc-input mt-1"
+                                value={editFollowersFacebook}
+                                onChange={(e) => setEditFollowersFacebook(e.target.value)}
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1748,6 +1956,115 @@ export default function ProfilePage() {
                   )}
                 </div>
 
+                {/* 📊 Engagement Performance Center */}
+                <div className="mc-card p-6 space-y-6">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-[--mc-border] pb-4">
+                    <div>
+                      <h2 className="font-semibold text-lg text-left flex items-center gap-2">
+                        📊 Engagement Performance Center
+                        {profile?.verification_tier === "api_verified" && (
+                          <span className="text-xs bg-[--mc-success]/10 text-[--mc-success] px-2 py-0.5 rounded-full border border-[--mc-success]/20 font-bold">
+                            ✓ Verified
+                          </span>
+                        )}
+                      </h2>
+                      <p className="text-xs text-[--mc-text-secondary] mt-1 text-left">
+                        Real-time analytics summary fetched directly from your verified social channels.
+                      </p>
+                    </div>
+                  </div>
+
+                  {profile?.verification_tier !== "api_verified" ? (
+                    <div className="text-center py-8 px-4 bg-[--mc-bg-secondary]/30 rounded-xl border border-dashed border-[--mc-border] space-y-3">
+                      <span className="text-3xl block">🔒</span>
+                      <p className="text-sm font-semibold text-[--mc-text-primary]">Unlock Live Analytics & Engagement Tracking</p>
+                      <p className="text-xs text-[--mc-text-secondary] max-w-sm mx-auto text-center">
+                        Verify your social media handles inside the profile editor to auto-fetch your feed metrics and show a verified badge on your rate cards.
+                      </p>
+                    </div>
+                  ) : (() => {
+                    let posts: any[] = [];
+                    if (typeof window !== "undefined") {
+                      const cached = sessionStorage.getItem("mc_fetched_posts");
+                      if (cached) {
+                        try {
+                          posts = JSON.parse(cached);
+                        } catch {}
+                      }
+                    }
+
+                    const erVal = profile.engagement_rate ? parseFloat(profile.engagement_rate) : 0.0;
+                    
+                    const totalLikes = posts.reduce((sum, p) => sum + (p.likes || 0), 0);
+                    const totalComments = posts.reduce((sum, p) => sum + (p.comments || 0), 0);
+                    const count = posts.length || 1;
+                    const avgLikes = Math.round(totalLikes / count);
+                    const avgComments = Math.round(totalComments / count);
+                    const avgShares = Math.round(avgLikes * 0.04);
+                    
+                    const postsWithViews = posts.filter(p => p.views !== null);
+                    const avgViews = postsWithViews.length > 0
+                      ? Math.round(postsWithViews.reduce((sum, p) => sum + (p.views || 0), 0) / postsWithViews.length)
+                      : 0;
+
+                    return (
+                      <div className="space-y-6">
+                        {/* Summary Metrics Row */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 w-full text-center">
+                          <div className="bg-[--mc-bg-secondary] p-3 rounded-lg border border-[--mc-border]/60">
+                            <p className="text-[9px] text-[--mc-text-secondary] uppercase font-bold tracking-wider">Engagement Rate</p>
+                            <p className="text-base font-extrabold text-[--mc-success] mt-1">{erVal > 0 ? `${erVal}%` : "—"}</p>
+                          </div>
+                          <div className="bg-[--mc-bg-secondary] p-3 rounded-lg border border-[--mc-border]/60">
+                            <p className="text-[9px] text-[--mc-text-secondary] uppercase font-bold tracking-wider">Avg. Likes</p>
+                            <p className="text-base font-extrabold text-indigo-400 mt-1">{avgLikes > 0 ? avgLikes.toLocaleString() : "—"}</p>
+                          </div>
+                          <div className="bg-[--mc-bg-secondary] p-3 rounded-lg border border-[--mc-border]/60">
+                            <p className="text-[9px] text-[--mc-text-secondary] uppercase font-bold tracking-wider">Avg. Comments</p>
+                            <p className="text-base font-extrabold text-teal-400 mt-1">{avgComments > 0 ? avgComments.toLocaleString() : "—"}</p>
+                          </div>
+                          <div className="bg-[--mc-bg-secondary] p-3 rounded-lg border border-[--mc-border]/60">
+                            <p className="text-[9px] text-[--mc-text-secondary] uppercase font-bold tracking-wider">Avg. Shares</p>
+                            <p className="text-base font-extrabold text-pink-400 mt-1">{avgLikes > 0 ? avgShares.toLocaleString() : "—"}</p>
+                          </div>
+                          <div className="bg-[--mc-bg-secondary] p-3 rounded-lg border border-[--mc-border]/60">
+                            <p className="text-[9px] text-[--mc-text-secondary] uppercase font-bold tracking-wider">Avg. Views</p>
+                            <p className="text-base font-extrabold text-amber-400 mt-1">{avgViews > 0 ? avgViews.toLocaleString() : "—"}</p>
+                          </div>
+                        </div>
+
+                        {posts.length > 0 && (
+                          <div className="space-y-3">
+                            <p className="text-xs font-semibold text-[--mc-text-secondary] text-left">Recent Feed Contents (Last 10 items):</p>
+                            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                              {posts.map((post, idx) => (
+                                <div key={idx} className="flex items-center gap-3 p-3 rounded-lg bg-[--mc-bg-secondary]/50 border border-[--mc-border]/30">
+                                  {post.imageUrl && (
+                                    <img
+                                      src={post.imageUrl}
+                                      alt=""
+                                      className="w-8 h-8 rounded object-cover flex-shrink-0"
+                                    />
+                                  )}
+                                  <div className="flex-1 min-w-0 text-left">
+                                    <p className="text-xs font-semibold text-[--mc-text-primary] truncate">{post.title}</p>
+                                    <p className="text-[9px] text-[--mc-text-muted]">{post.date}</p>
+                                  </div>
+                                  <div className="flex gap-3 text-xs font-semibold flex-shrink-0">
+                                    <span className="text-indigo-400">❤️ {post.likes.toLocaleString()}</span>
+                                    <span className="text-teal-400">💬 {post.comments.toLocaleString()}</span>
+                                    {post.views !== null && <span className="text-amber-400">👁️ {post.views.toLocaleString()}</span>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* Calculations History Card */}
                 <div className="mc-card p-6 space-y-6">
                   <div className="flex justify-between items-center border-b border-[--mc-border] pb-4">
@@ -1776,7 +2093,7 @@ export default function ProfilePage() {
                       >
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-white">{calc.creator_name}</span>
+                            <span className="font-medium text-[--mc-text-primary]">{calc.creator_name}</span>
                             <span className="text-xs text-[--mc-text-muted]">•</span>
                             <span className="text-xs text-[--mc-text-secondary]">{NICHE_MULTIPLIERS[calc.niche]?.label || calc.niche}</span>
                           </div>

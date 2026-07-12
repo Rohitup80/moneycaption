@@ -160,8 +160,8 @@ export async function fetchInstagramProfile(handle: string): Promise<FetchResult
       throw new Error(`Provider returned ${status}`);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = await profileRes.json();
+    const rootData: any = await profileRes.json();
+    const data = rootData.data?.user || rootData.user || rootData;
 
     // Handle private accounts
     if (data.is_private) {
@@ -176,21 +176,24 @@ export async function fetchInstagramProfile(handle: string): Promise<FetchResult
       };
     }
 
-    const followers = data.followers_count || data.follower_count || 0;
-    const following = data.following_count || data.followees_count || null;
-    const posts = data.media_count || data.post_count || null;
+    const followers = data.edge_followed_by?.count || data.followers_count || data.follower_count || 0;
+    const following = data.edge_follow?.count || data.following_count || data.followees_count || null;
+    const posts = data.edge_owner_to_timeline_media?.count || data.media_count || data.post_count || null;
 
     // Try to get recent posts for engagement calculation
     let engagementRate: number | null = null;
     try {
-      const recentPosts = (data.recent_posts || data.edge_owner_to_timeline_media?.edges || [])
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawPosts = data.recent_posts || data.edge_owner_to_timeline_media?.edges || [];
+      const recentPosts = rawPosts
         .slice(0, 18)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .map((post: any) => ({
-          likes: post.like_count || post.edge_liked_by?.count || post.likes || 0,
-          comments: post.comment_count || post.edge_media_to_comment?.count || post.comments || 0,
-        }));
+        .map((post: any) => {
+          const node = post.node || post;
+          return {
+            likes: node.like_count || node.edge_liked_by?.count || node.likes || 0,
+            comments: node.comment_count || node.edge_media_to_comment?.count || node.comments || 0,
+          };
+        });
 
       engagementRate = calculateEngagement(followers, recentPosts);
     } catch {
@@ -208,7 +211,7 @@ export async function fetchInstagramProfile(handle: string): Promise<FetchResult
         posts,
         engagementRate,
         profileName: data.full_name || data.name || null,
-        profilePicUrl: data.profile_pic_url || null,
+        profilePicUrl: data.profile_pic_url_hd || data.profile_pic_url || null,
         isPrivate: false,
         dataSourceProvider: "scrapecreators",
         verificationTier: "auto_fetched_public",
@@ -252,7 +255,7 @@ export async function fetchFacebookProfile(handle: string): Promise<FetchResult>
 
   try {
     const profileRes = await fetchWithTimeout(
-      `${SCRAPE_BASE_URL}/facebook/profile?handle=${encodeURIComponent(cleanHandle)}`,
+      `${SCRAPE_BASE_URL}/facebook/profile?url=${encodeURIComponent(`https://www.facebook.com/${cleanHandle}`)}`,
       {
         method: "GET",
         headers: {
@@ -292,7 +295,7 @@ export async function fetchFacebookProfile(handle: string): Promise<FetchResult>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = await profileRes.json();
 
-    const followers = data.followers_count || data.fan_count || data.likes || 0;
+    const followers = data.followerCount || data.followers_count || data.likeCount || data.fan_count || data.likes || 0;
 
     // Facebook engagement from recent posts if available
     let engagementRate: number | null = null;
@@ -320,7 +323,7 @@ export async function fetchFacebookProfile(handle: string): Promise<FetchResult>
         posts: data.post_count || null,
         engagementRate,
         profileName: data.name || data.page_name || null,
-        profilePicUrl: data.profile_pic_url || null,
+        profilePicUrl: data.profilePicLarge || data.profilePicMedium || data.profilePhoto?.url || data.profile_pic_url || null,
         isPrivate: false,
         dataSourceProvider: "scrapecreators",
         verificationTier: "auto_fetched_public",
@@ -552,17 +555,21 @@ export async function fetchRecentPosts(
         }
       );
       if (!res.ok) return [];
-      const data: any = await res.json();
-      const recentPosts = data.recent_posts || data.edge_owner_to_timeline_media?.edges || [];
-      return recentPosts.slice(0, 5).map((post: any) => ({
-        url: post.shortcode ? `https://instagram.com/p/${post.shortcode}` : `https://instagram.com/${cleanHandle}`,
-        title: post.caption || post.title || "Instagram Post",
-        likes: post.like_count || post.edge_liked_by?.count || post.likes || 0,
-        comments: post.comment_count || post.edge_media_to_comment?.count || post.comments || 0,
-        views: post.view_count || post.views || null,
-        date: post.taken_at ? new Date(post.taken_at * 1000).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN"),
-        imageUrl: post.display_url || post.thumbnail_src || null,
-      }));
+      const rootData: any = await res.json();
+      const user = rootData.data?.user || rootData.user || rootData;
+      const rawPosts = user.recent_posts || user.edge_owner_to_timeline_media?.edges || [];
+      return rawPosts.slice(0, 10).map((post: any) => {
+        const node = post.node || post;
+        return {
+          url: node.shortcode ? `https://instagram.com/p/${node.shortcode}` : `https://instagram.com/${cleanHandle}`,
+          title: node.caption || node.title || "Instagram Post",
+          likes: node.like_count || node.edge_liked_by?.count || node.likes || 0,
+          comments: node.comment_count || node.edge_media_to_comment?.count || node.comments || 0,
+          views: node.view_count || node.views || null,
+          date: node.taken_at ? new Date(node.taken_at * 1000).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN"),
+          imageUrl: node.display_url || node.thumbnail_src || null,
+        };
+      });
     } catch (err) {
       console.error("IG posts fetch error:", err);
       return [];
@@ -601,7 +608,7 @@ export async function fetchRecentPosts(
       if (!channelId) return [];
 
       const videosRes = await fetchWithTimeout(
-        `https://www.googleapis.com/youtube/v3/search?part=id,snippet&channelId=${channelId}&order=date&type=video&maxResults=5&key=${YOUTUBE_API_KEY}`,
+        `https://www.googleapis.com/youtube/v3/search?part=id,snippet&channelId=${channelId}&order=date&type=video&maxResults=10&key=${YOUTUBE_API_KEY}`,
         { method: "GET" }
       );
       if (!videosRes.ok) return [];
@@ -637,7 +644,7 @@ export async function fetchRecentPosts(
     if (!SCRAPE_API_KEY) return [];
     try {
       const res = await fetchWithTimeout(
-        `${SCRAPE_BASE_URL}/facebook/profile?handle=${encodeURIComponent(cleanHandle)}`,
+        `${SCRAPE_BASE_URL}/facebook/profile?url=${encodeURIComponent(`https://www.facebook.com/${cleanHandle}`)}`,
         {
           method: "GET",
           headers: {
@@ -649,7 +656,7 @@ export async function fetchRecentPosts(
       if (!res.ok) return [];
       const data: any = await res.json();
       const recentPosts = data.recent_posts || [];
-      return recentPosts.slice(0, 5).map((post: any) => ({
+      return recentPosts.slice(0, 10).map((post: any) => ({
         url: post.url || `https://facebook.com/${cleanHandle}`,
         title: post.text || post.message || "Facebook Post",
         likes: post.reactions_count || post.likes || 0,

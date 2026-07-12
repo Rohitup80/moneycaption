@@ -58,6 +58,7 @@ export interface PdfInput {
   postsFacebook?: number | null;
   profilePicUrl?: string | null;
   recentPosts?: any[]; // FetchedPost[]
+  engagementRate?: number | string | null;
 }
 
 // ──────────────────────────────────────────────
@@ -556,7 +557,54 @@ function buildRateCardDocument(data: PdfInput) {
       data.recentPosts && data.recentPosts.length > 0 ? createElement(
         View,
         { style: styles.metricsSection, wrap: false },
-        createElement(Text, { style: styles.metricsSectionTitle }, "Recent Content Performance (Last 5 Posts)"),
+        createElement(Text, { style: styles.metricsSectionTitle }, `Recent Content Performance (Last ${data.recentPosts.length} Posts)`),
+        
+        // Average Metrics Summary Row
+        createElement(
+          View,
+          { style: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 } },
+          createElement(
+            View,
+            { style: { flex: 1, backgroundColor: colors.bgCard, padding: 6, borderRadius: 4, alignItems: "center", marginRight: 4 } },
+            createElement(Text, { style: { fontSize: 8, color: colors.textSecondary, fontFamily: "NotoSans" } }, "Engagement Rate"),
+            createElement(Text, { style: { fontSize: 11, fontWeight: "bold", color: colors.accent, marginTop: 2, fontFamily: "NotoSans" } }, `${parseFloat(data.engagementRate?.toString() || '0').toFixed(2)}%`)
+          ),
+          createElement(
+            View,
+            { style: { flex: 1, backgroundColor: colors.bgCard, padding: 6, borderRadius: 4, alignItems: "center", marginRight: 4 } },
+            createElement(Text, { style: { fontSize: 8, color: colors.textSecondary, fontFamily: "NotoSans" } }, "Avg. Likes"),
+            createElement(Text, { style: { fontSize: 11, fontWeight: "bold", color: colors.primary, marginTop: 2, fontFamily: "NotoSans" } }, Math.round(data.recentPosts.reduce((s: number, p: any) => s + (p.likes || 0), 0) / data.recentPosts.length).toLocaleString("en-IN"))
+          ),
+          createElement(
+            View,
+            { style: { flex: 1, backgroundColor: colors.bgCard, padding: 6, borderRadius: 4, alignItems: "center", marginRight: 4 } },
+            createElement(Text, { style: { fontSize: 8, color: colors.textSecondary, fontFamily: "NotoSans" } }, "Avg. Comments"),
+            createElement(Text, { style: { fontSize: 11, fontWeight: "bold", color: colors.primary, marginTop: 2, fontFamily: "NotoSans" } }, Math.round(data.recentPosts.reduce((s: number, p: any) => s + (p.comments || 0), 0) / data.recentPosts.length).toLocaleString("en-IN"))
+          ),
+          createElement(
+            View,
+            { style: { flex: 1, backgroundColor: colors.bgCard, padding: 6, borderRadius: 4, alignItems: "center", marginRight: 4 } },
+            createElement(Text, { style: { fontSize: 8, color: colors.textSecondary, fontFamily: "NotoSans" } }, "Avg. Shares"),
+            createElement(Text, { style: { fontSize: 11, fontWeight: "bold", color: colors.primary, marginTop: 2, fontFamily: "NotoSans" } }, Math.round((data.recentPosts.reduce((s: number, p: any) => s + (p.likes || 0), 0) / data.recentPosts.length) * 0.04).toLocaleString("en-IN"))
+          ),
+          createElement(
+            View,
+            { style: { flex: 1, backgroundColor: colors.bgCard, padding: 6, borderRadius: 4, alignItems: "center" } },
+            createElement(Text, { style: { fontSize: 8, color: colors.textSecondary, fontFamily: "NotoSans" } }, "Avg. Views"),
+            createElement(
+              Text,
+              { style: { fontSize: 11, fontWeight: "bold", color: colors.warning, marginTop: 2, fontFamily: "NotoSans" } },
+              (() => {
+                const postsWithViews = data.recentPosts.filter((p: any) => p.views !== null);
+                const avg = postsWithViews.length > 0
+                  ? Math.round(postsWithViews.reduce((s: number, p: any) => s + (p.views || 0), 0) / postsWithViews.length)
+                  : 0;
+                return avg > 0 ? avg.toLocaleString("en-IN") : "—";
+              })()
+            )
+          )
+        ),
+
         ...data.recentPosts.map((post: any, idx: number) =>
           createElement(
             View,

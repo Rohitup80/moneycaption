@@ -122,7 +122,7 @@ export default function LandingPage() {
             for Instagram, YouTube & Facebook creators across India.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up opacity-0 delay-300">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in-up opacity-0 delay-300">
             <Link
               href="/calculate"
               id="hero-cta"
@@ -133,9 +133,12 @@ export default function LandingPage() {
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </Link>
-            <span className="mc-btn mc-btn-secondary mc-btn-lg cursor-default">
-              100% Free · No Login Required
-            </span>
+            <Link
+              href="/worth-calculator"
+              className="mc-btn mc-btn-secondary mc-btn-lg bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20 flex items-center justify-center gap-2"
+            >
+              📊 Estimate Post Worth
+            </Link>
           </div>
 
           {/* Social proof */}
